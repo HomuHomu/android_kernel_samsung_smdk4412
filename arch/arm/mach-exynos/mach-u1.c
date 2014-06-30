@@ -6849,7 +6849,7 @@ static struct pas2m110_platform_data pas2m110_pdata = {
 };
 #endif
 #endif
-#ifdef CONFIG_SENSORS_GP2A_ANALOG
+#if defined (CONFIG_SENSORS_GP2A_ANALOG) || defined (CONFIG_OPTICAL_GP2AP020)
 static int gp2a_power(bool on)
 {
 	struct regulator *regulator;
@@ -6879,6 +6879,12 @@ static struct gp2a_platform_data gp2a_pdata = {
 #endif
 
 static struct i2c_board_info i2c_devs11_emul[] __initdata = {
+#if defined(CONFIG_OPTICAL_GP2AP020)
+        {
+                I2C_BOARD_INFO("gp2a", (0x72 >> 1)),
+                .platform_data = &gp2a_pdata,
+        },
+#endif
 #ifdef CONFIG_MACH_U1_BD
 	{
 		I2C_BOARD_INFO("cm3663", 0x20),
