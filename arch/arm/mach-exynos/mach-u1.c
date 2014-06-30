@@ -112,6 +112,10 @@
 #include <plat/fb-s5p.h>
 #endif
 
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+#include <linux/gp2a.h>
+#endif
+
 #if defined(CONFIG_VIDEO_SAMSUNG_S5P_MFC) || defined(CONFIG_VIDEO_MFC5X)
 #include <plat/s5p-mfc.h>
 #endif
@@ -193,6 +197,10 @@
 #include <linux/host_notify.h>
 #endif
 
+#ifdef CONFIG_MACH_C1_KDDI_REV00
+#include <linux/wimax/samsung/wimax732.h>
+#endif
+
 #ifdef CONFIG_EPEN_WACOM_G5SP
 #include <linux/wacom_i2c.h>
 static struct wacom_g5_callbacks *wacom_callbacks;
@@ -215,7 +223,7 @@ static struct wacom_g5_callbacks *wacom_callbacks;
 #include <linux/phone_svn/ipc_spi.h>
 #include <linux/irq.h>
 #endif
-#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
+#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC) || defined(CONFIG_MACH_C1_KDDI_REV00)
 #include "../../../drivers/usb/gadget/s3c_udc.h"
 #endif
 
@@ -381,7 +389,7 @@ static int m5mo_power_on(void)
 	ret = gpio_direction_output(GPIO_CAM_SENSOR_CORE, 1);
 	CAM_CHECK_ERR_RET(ret, "output senser_core");
 
-#if defined(CONFIG_MACH_Q1_BD)
+#if defined(CONFIG_MACH_Q1_BD) || defined(CONFIG_MACH_C1_KDDI_REV00)
 	udelay(120);
 #else
 	udelay(10);
@@ -401,7 +409,7 @@ static int m5mo_power_on(void)
 	CAM_CHECK_ERR_RET(ret, "output VT_CAM_1.5V");
 	udelay(20);
 
-#if defined(CONFIG_MACH_Q1_BD)
+#if defined(CONFIG_MACH_Q1_BD) || defined(CONFIG_MACH_C1_KDDI_REV00)
 	udelay(120);
 #endif
 
@@ -735,7 +743,7 @@ static int m5mo_power_down(void)
 	regulator_put(regulator);
 	CAM_CHECK_ERR(ret, "disable isp_core");
 
-#if defined(CONFIG_MACH_Q1_BD)
+#if defined(CONFIG_MACH_Q1_BD) || defined(CONFIG_MACH_C1_KDDI_REV00)
 	mdelay(250);
 #endif
 
@@ -1645,7 +1653,7 @@ static int ext_cd_cleanup_hsmmc##num(void (*notify_func)( \
 	return 0; \
 }
 
-#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
+#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC) || defined(CONFIG_MACH_C1_KDDI_REV00)
 #ifdef CONFIG_S3C_DEV_HSMMC2
 	DEFINE_MMC_CARD_NOTIFIER(2)
 #endif
@@ -1664,7 +1672,7 @@ void mmc_force_presence_change(struct platform_device *pdev)
 {
 	void (*notify_func)(struct platform_device *, int state) = NULL;
 	mutex_lock(&notify_lock);
-#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
+#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC) || defined(CONFIG_MACH_C1_KDDI_REV00)
 #ifdef CONFIG_S3C_DEV_HSMMC2
 	if (pdev == &s3c_device_hsmmc2) {
 		printk(KERN_INFO "Test logs pdev : %p s3c_device_hsmmc2 %p\n",
@@ -1706,20 +1714,20 @@ static struct s3c_sdhci_platdata exynos4_hsmmc0_pdata __initdata = {
 
 #ifdef CONFIG_S3C_DEV_HSMMC2
 static struct s3c_sdhci_platdata exynos4_hsmmc2_pdata __initdata = {
-#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
-	.cd_type = S3C_SDHCI_CD_EXTERNAL,
-#else
+#if !defined(CONFIG_MACH_C1_KDDI_REV00)
 	.cd_type = S3C_SDHCI_CD_GPIO,
+#if !defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
 	.ext_cd_gpio = EXYNOS4_GPX3(4),
 	.vmmc_name = "vtf_2.8v",
-	.ext_cd_gpio_invert = 1,
 #endif
+	.ext_cd_gpio_invert = 1,
 	.clk_type = S3C_SDHCI_CLK_DIV_EXTERNAL,
-#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
-/* For Wi-Fi */
+#else
+	.cd_type = S3C_SDHCI_CD_EXTERNAL,
+	.clk_type = S3C_SDHCI_CLK_DIV_EXTERNAL,
+	.pm_flags = S3C_SDHCI_PM_IGNORE_SUSPEND_RESUME,
 	.ext_cd_init = ext_cd_init_hsmmc2,
 	.ext_cd_cleanup = ext_cd_cleanup_hsmmc2,
-	.pm_flags = S3C_SDHCI_PM_IGNORE_SUSPEND_RESUME,
 #endif
 };
 #endif
@@ -2544,7 +2552,7 @@ static void __init ld9040_fb_init(void)
 
 	lcdtype = max(ld9040_lcdtype, lcdtype);
 
-#if !defined(CONFIG_PANEL_U1_NA_SPR) && !defined(CONFIG_MACH_U1_NA_USCC)
+#if !defined(CONFIG_PANEL_U1_NA_SPR) && !defined(CONFIG_MACH_U1_NA_USCC) && !defined(CONFIG_MACH_C1_KDDI_REV00)
 	if (lcdtype == LCDTYPE_SM2_A2)
 		ld9040_platform_data.pdata = &u1_panel_data_a2;
 	else if (lcdtype == LCDTYPE_M2)
@@ -3071,7 +3079,7 @@ REGULATOR_INIT(ldo11, "TOUCH_2.8V", 2800000, 2800000, 0,
 		REGULATOR_CHANGE_STATUS, 1);
 REGULATOR_INIT(ldo12, "VT_CAM_1.8V", 1800000, 1800000, 0,
 		REGULATOR_CHANGE_STATUS, 1);
-#if defined(CONFIG_MACH_Q1_BD)
+#if defined(CONFIG_MACH_Q1_BD) || defined(CONFIG_MACH_C1_KDDI_REV00)
 REGULATOR_INIT(ldo13, "VCC_3.0V_LCD", 3100000, 3100000, 1,
 		REGULATOR_CHANGE_STATUS, 1);
 #else
@@ -3091,7 +3099,7 @@ REGULATOR_INIT(ldo16, "CAM_SENSOR_IO_1.8V", 1800000, 1800000, 0,
 		REGULATOR_CHANGE_STATUS, 1);
 REGULATOR_INIT(ldo17, "VTF_2.8V", 2800000, 2800000, 0,
 		REGULATOR_CHANGE_STATUS, 1);
-#if defined(CONFIG_MACH_Q1_BD)
+#if defined(CONFIG_MACH_Q1_BD) || defined(CONFIG_MACH_C1_KDDI_REV00)
 REGULATOR_INIT(ldo18, "TOUCH_LED_3.3V", 3300000, 3300000, 0,
 		REGULATOR_CHANGE_STATUS, 1);
 #else
@@ -3338,6 +3346,16 @@ static struct max8997_motor_data max8997_motor = {
 	.pwm_id = 1,
 };
 #elif defined(CONFIG_TARGET_LOCALE_KOR) || defined(CONFIG_TARGET_LOCALE_NA)
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+static struct max8997_motor_data max8997_motor = {
+	.max_timeout = 10000,
+	.duty = 38022,
+	.period = 38402,
+	.init_hw = NULL,
+	.motor_en = NULL,
+	.pwm_id = 1,
+};
+#else
 static struct max8997_motor_data max8997_motor = {
 	.max_timeout = 10000,
 	.duty = 44196,
@@ -3346,6 +3364,7 @@ static struct max8997_motor_data max8997_motor = {
 	.motor_en = NULL,
 	.pwm_id = 1,
 };
+#endif
 #elif defined(CONFIG_MACH_Q1_BD)
 static struct max8997_motor_data max8997_motor = {
 	.max_timeout = 10000,
@@ -3672,7 +3691,7 @@ static void max8997_muic_usb_cb(u8 usb_mode)
 	} else
 		pr_info("otg error s3c_udc is null.\n");
 }
-#elif defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
+#elif defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC) || defined(CONFIG_MACH_C1_KDDI_REV00)
 static void max8997_muic_usb_cb(u8 usb_mode)
 {
 	struct s3c_udc *udc_dev = platform_get_drvdata(&s3c_device_usbgadget);
@@ -4606,7 +4625,7 @@ static struct sec_bat_adc_table_data temper_table_ADC7[] =  {
 };
 #endif
 /* temperature table for ADC 7 */
-#ifdef CONFIG_TARGET_LOCALE_NA
+#if defined(CONFIG_TARGET_LOCALE_NA) && !defined(CONFIG_MACH_C1_KDDI_REV00)
 static struct sec_bat_adc_table_data  temper_table_ADC7[] =  {
 	{  145,  670 },
 	{  165,  660 },
@@ -4691,7 +4710,91 @@ static struct sec_bat_adc_table_data  temper_table_ADC7[] =  {
 	{ 1675,  -130 },
 	{ 1685,  -140 },
 };
-
+#elif defined(CONFIG_MACH_C1_KDDI_REV00)
+static struct sec_bat_adc_table_data  temper_table_ADC7[] =  {
+	{  234,  670 },
+	{  254,  660 },
+	{  274,  650 },
+	{  286,  640 },
+	{  298,  630 },
+	{  310,  620 },
+	{  322,  610 },
+	{  336,  600 },
+	{  346,  590 },
+	{  357,  580 },
+	{  365,  570 },
+	{  378,  560 },
+	{  390,  550 },
+	{  402,  540 },
+	{  420,  530 },
+	{  435,  520 },
+	{  455,  510 },
+	{  475,  500 },
+	{  495,  490 },
+	{  515,  480 },
+	{  530,  470 },
+	{  545,  460 },
+	{  557,  450 },
+	{  558,  440 },
+	{  559,  430 },
+	{  590,  420 },
+	{  610,  410 },
+	{  646,  400 },
+	{  647,  390 },
+	{  648,  380 },
+	{  655,  370 },
+	{  677,  360 },
+	{  700,  350 },
+	{  717,  340 },
+	{  733,  330 },
+	{  748,  320 },
+	{  762,  310 },
+	{  775,  300 },
+	{  797,  290 },
+	{  820,  280 },
+	{  844,  270 },
+	{  869,  260 },
+	{  895,  250 },
+	{  922,  240 },
+	{  948,  230 },
+	{  973,  220 },
+	{  997,  210 },
+	{ 1020,  200 },
+	{ 1043,  190 },
+	{ 1066,  180 },
+	{ 1089,  170 },
+	{ 1112,  160 },
+	{ 1135,  150 },
+	{ 1158,  140 },
+	{ 1181,  130 },
+	{ 1204,  120 },
+	{ 1227,  110 },
+	{ 1250,  100 },
+	{ 1275,   90 },
+	{ 1305,   80 },
+	{ 1340,   70 },
+	{ 1370,   60 },
+	{ 1400,   50 },
+	{ 1430,   40 },
+	{ 1460,   30 },
+	{ 1480,   20 },
+	{ 1500,   10 },
+	{ 1525,    0 },
+	{ 1540,  -10 },
+	{ 1560,  -20 },
+	{ 1580,  -30 },
+	{ 1600,  -40 },
+	{ 1625,  -50 },
+	{ 1640,  -60 },
+	{ 1655,  -70 },
+	{ 1670,  -80 },
+	{ 1680,  -90 },
+	{ 1690,  -100 },
+	{ 1700,  -110 },
+	{ 1710,  -120 },
+	{ 1720,  -130 },
+	{ 1730,  -140 },
+};
 #else
 /* temperature table for ADC 7 */
 static struct sec_bat_adc_table_data temper_table_ADC7[] = {
@@ -4802,6 +4905,53 @@ static struct sec_bat_adc_table_data temper_table_ADC7[] = {
 #define ADC_CH_TEMPERATURE_PMIC	6
 #define ADC_CH_TEMPERATURE_LCD	7
 
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+static bool IsRegDisInLPM = false;
+int sec_disable_regulator(const char *reg_nm )
+{
+	struct regulator *regulator =  NULL;
+
+	if (reg_nm)
+		printk("%s:  Disabling Regulator -> %s\n", __func__, reg_nm);
+
+	regulator = regulator_get(NULL, reg_nm);
+	if (IS_ERR(regulator))
+      		  return 0;
+
+	if (regulator_is_enabled(regulator))  
+	{
+		printk("%s:  Forced Disable -> %s\n", __func__, reg_nm);
+       		regulator_force_disable(regulator);
+	}
+	regulator_put(regulator);
+
+	return 1;
+}
+
+int sec_isLpmMode(void)
+{
+	u32 val = __raw_readl(S5P_INFORM2);
+
+	pr_err("%s: LP charging:%d\n", __func__, val);
+
+	if (val && IsRegDisInLPM == false)
+	{
+		sec_disable_regulator("vdd_g3d");
+		sec_disable_regulator("vdd_arm");
+		sec_disable_regulator("vdd_int");
+		sec_disable_regulator("vhsic");
+#if 0 // 03-Apr-2012, rajesh -- need to enable this.
+#ifdef CONFIG_S5PV310_HI_ARMCLK_THAN_1_2GHZ
+		s5pv310_cpufreq_lock(DVFS_LOCK_ID_PEN, CPU_L5);
+		mdelay(1);
+#endif
+#endif
+		IsRegDisInLPM = true;
+	}
+	return val;
+}
+#endif
+
 static unsigned int sec_bat_get_lpcharging_state(void)
 {
 	u32 val = __raw_readl(S5P_INFORM2);
@@ -4897,7 +5047,7 @@ static struct smb328_platform_data smb328_pdata = {
 };
 #endif /* CONFIG_SMB328_CHARGER */
 
-#if defined(CONFIG_SMB136_CHARGER_Q1) || defined(CONFIG_SMB328_CHARGER)
+#if defined(CONFIG_SMB136_CHARGER_Q1) || (defined(CONFIG_SMB328_CHARGER) && !defined(CONFIG_MACH_C1_KDDI_REV00))
 static struct i2c_gpio_platform_data gpio_i2c_data19 = {
 	.sda_pin = GPIO_CHG_SDA,
 	.scl_pin = GPIO_CHG_SCL,
@@ -5219,6 +5369,17 @@ struct gpio_keys_button u1_buttons[] = {
 		.active_low = 1,
 		.type = EV_KEY,
 		.wakeup = 1,
+		.debounce_interval = 10,
+	},			/* ok key */
+#endif
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+	{
+		.code = KEY_HOME,
+		.gpio = GPIO_OK_KEY,
+		.active_low = 1,
+		.type = EV_KEY,
+		.wakeup = 1,
+		.isr_hook = sec_debug_check_crash_key,
 		.debounce_interval = 10,
 	},			/* ok key */
 #endif
@@ -6447,6 +6608,14 @@ struct platform_device s3c_device_i2c8 = {
 };
 
 /* I2C8 */
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+static struct i2c_board_info i2c_devs8_emul[] __initdata = {
+	{
+		I2C_BOARD_INFO("sec_touchkey", 0x20),
+		.platform_data = &touchkey_pdata,	
+	},
+};
+#else
 static struct i2c_board_info i2c_devs8_emul[] = {
 #ifdef CONFIG_KEYBOARD_CYPRESS_TOUCH
 	{
@@ -6455,6 +6624,7 @@ static struct i2c_board_info i2c_devs8_emul[] = {
 	},
 #endif
 };
+#endif
 #endif
 
 #ifdef CONFIG_S3C_DEV_I2C9_EMUL
@@ -6757,7 +6927,11 @@ static struct pn544_i2c_platform_data pn544_pdata = {
 static struct i2c_board_info i2c_devs14[] __initdata = {
 	{
 		I2C_BOARD_INFO("pn544", 0x2b),
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+		.irq = IRQ_EINT(27), 	//ssong110908. NFC pin setting. XEINT_27, GPX3[3]
+#else
 		.irq = IRQ_EINT(15),
+#endif
 		.platform_data = &pn544_pdata,
 	},
 };
@@ -6786,6 +6960,11 @@ void nfc_setup_gpio(void)
 
 	/* s3c_gpio_cfgpin(GPIO_NFC_IRQ, EINT_MODE); */
 	/* s3c_gpio_setpull(GPIO_NFC_IRQ, S3C_GPIO_PULL_DOWN); */
+//ssong110908. NFC pin setting.
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+	s3c_gpio_cfgpin(GPIO_NFC_IRQ, S3C_GPIO_SFN(0xF));
+	s3c_gpio_setpull(GPIO_NFC_IRQ, S3C_GPIO_PULL_NONE);
+#endif
 }
 #endif
 
@@ -6919,10 +7098,19 @@ static struct platform_device s3c_device_i2c17 = {
 /* for Geminus based on MIPI-DSI interface */
 static struct s3cfb_lcd s6e8aa0 = {
 	.name = "s6e8aa0",
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+       .width = 720,
+#else
 	.width = 800,
+#endif
 	.height = 1280,
+#if defined(CONFIG_MACH_C1_KDDI_REV00) 
+       .p_width = 58,
+       .p_height = 103,
+#else
 	.p_width = 64,
 	.p_height = 106,
+#endif
 	.bpp = 24,
 
 	.freq = 57,
@@ -7353,7 +7541,7 @@ static struct platform_device *smdkc210_devices[] __initdata = {
 #ifdef	CONFIG_ISDBT_FC8100
 	&s3c_device_i2c17,	/* ISDBT */
 #endif
-#if defined(CONFIG_SMB136_CHARGER_Q1) || defined(CONFIG_SMB328_CHARGER)
+#if defined(CONFIG_SMB136_CHARGER_Q1)|| (defined(CONFIG_SMB328_CHARGER) && !defined(CONFIG_MACH_C1_KDDI_REV00))
 	&s3c_device_i2c19,	/* SMB136, SMB328 */
 #endif
 #if defined(CONFIG_USBHUB_USB3803)
@@ -7366,8 +7554,10 @@ static struct platform_device *smdkc210_devices[] __initdata = {
 	/* consumer driver should resume after resuming i2c drivers */
 	&u1_regulator_consumer,
 
+#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_C1_KDDI_REV00)
 #ifdef CONFIG_EXYNOS4_DEV_MSHC
 	&s3c_device_mshci,
+#endif
 #endif
 
 #ifdef CONFIG_S3C_DEV_HSMMC
@@ -8015,7 +8205,7 @@ static void __init smdkc210_machine_init(void)
 	i2c_register_board_info(17, i2c_devs17, ARRAY_SIZE(i2c_devs17));
 #endif
 
-#if defined(CONFIG_SMB136_CHARGER_Q1) || defined(CONFIG_SMB328_CHARGER)
+#if defined(CONFIG_SMB136_CHARGER_Q1) || (defined(CONFIG_SMB328_CHARGER) && !defined(CONFIG_MACH_C1_KDDI_REV00))
 	i2c_register_board_info(19, i2c_devs19_emul,
 						ARRAY_SIZE(i2c_devs19_emul));
 #endif

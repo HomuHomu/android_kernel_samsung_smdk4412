@@ -565,6 +565,11 @@ static int s3cfb_probe(struct platform_device *pdev)
 			goto err_ioremap;
 		}
 
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+		/* hw setting */
+		s3cfb_init_global(fbdev[i]);
+#endif
+
 		spin_lock_init(&fbdev[i]->vsync_slock);
 
 #if defined(CONFIG_FB_S5P_VSYNC_THREAD)
@@ -615,9 +620,11 @@ static int s3cfb_probe(struct platform_device *pdev)
 			s3c_mdnie_setup();
 #endif
 #endif
+
+#if !defined(CONFIG_MACH_C1_KDDI_REV00)
 		/* hw setting */
 		s3cfb_init_global(fbdev[i]);
-
+#endif
 		fbdev[i]->system_state = POWER_ON;
 
 		spin_lock_init(&fbdev[i]->slock);

@@ -1720,6 +1720,8 @@ static int handle_detach(struct max8997_muic_info *info)
 	 * JIG off. Reset CONTROL1 is needed when detaching cable.
 	 */
 	ret = max8997_write_reg(info->muic, MAX8997_MUIC_REG_CTRL1, 0x00);
+
+#if !defined(CONFIG_MACH_C1_KDDI_REV00)
 	if (ret)
 		dev_err(info->dev, "%s: reset CONTROL1 err\n", __func__);
 
@@ -1727,6 +1729,13 @@ static int handle_detach(struct max8997_muic_info *info)
 		/* Enable Factory Accessory Detection State Machine */
 		set_accdet(info, 0x01);
 	}
+#else
+	{
+		/* Enable Factory Accessory Detection State Machine */
+		max8997_update_reg(client, MAX8997_MUIC_REG_CTRL2,
+				(1 << CTRL2_ACCDET_SHIFT), CTRL2_ACCDET_MASK);
+	}
+#endif
 
 #ifdef CONFIG_USBHUB_USB3803
 	/* setting usb hub in default mode (standby) */

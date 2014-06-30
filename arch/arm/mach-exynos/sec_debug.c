@@ -511,6 +511,11 @@ static void sec_debug_set_upload_cause(enum sec_debug_upload_cause_t type)
 	__raw_writel(type, S5P_INFORM4);
 	__raw_writel(type, S5P_INFORM6);
 
+#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_C1_KDDI_REV00)
+	if (type == UPLOAD_CAUSE_CP_ERROR_FATAL)
+		*(unsigned int *)(SEC_DEBUG_MAGIC_VA + 0x4) = 0x51000004;
+#endif
+
 	pr_emerg("(%s) %x\n", __func__, type);
 }
 
@@ -673,55 +678,43 @@ int sec_debug_panic_handler_safe(void *buf)
 static void dump_state_and_upload(void);
 #endif
 
-#if !defined(CONFIG_TARGET_LOCALE_NA)
+#if !defined(CONFIG_TARGET_LOCALE_NA) || defined (CONFIG_MACH_C1_KDDI_REV00)
 void sec_debug_check_crash_key(unsigned int code, int value)
 {
+	#if defined (CONFIG_MACH_C1_KDDI_REV00)
+	static unsigned long home_down_jiffies = 0;
+	static unsigned long vol_up_jiffies = 0;
+	#else
 	static bool volup_p;
 	static bool voldown_p;
 	static int loopcount;
-
-	/* In Case of GC1,
-	 * use Tele key as Volume up,
-	 * use Wide key as volume down.
-	 */
-#ifdef CONFIG_MACH_GC1
-	static unsigned int VOLUME_UP = 0x221;
-	static unsigned int VOLUME_DOWN = 0x222;
-
-	if (system_rev < 2) {
-		VOLUME_UP = KEY_CAMERA_ZOOMIN;
-		VOLUME_DOWN = KEY_CAMERA_ZOOMOUT;
-	}
-#else
-	static const unsigned int VOLUME_UP = KEY_VOLUMEUP;
-	static const unsigned int VOLUME_DOWN = KEY_VOLUMEDOWN;
-#endif
+	#endif
 
 	if (!sec_debug_level.en.kernel_fault)
 		return;
 
 	/* Must be deleted later */
-#if defined(CONFIG_MACH_MIDAS) || defined(CONFIG_SLP)
+#if defined(CONFIG_MACH_MIDAS) || defined(CONFIG_SLP) || defined (CONFIG_MACH_C1_KDDI_REV00)
 	pr_info("%s:key code(%d) value(%d)\n",
 		__func__, code, value);
 #endif
 
-	/* Enter Force Upload
-	 *  Hold volume down key first
-	 *  and then press power key twice
-	 *  and volume up key should not be pressed
-	 */
-	if (value) {
-		if (code == VOLUME_UP)
-			volup_p = true;
-		if (code == VOLUME_DOWN)
-			voldown_p = true;
-		if (!volup_p && voldown_p) {
-			if (code == KEY_POWER) {
-				pr_info
-				    ("%s: count for enter forced upload : %d\n",
-				     __func__, ++loopcount);
-				if (loopcount == 2) {
+
+#if defined (CONFIG_MACH_C1_KDDI_REV00)
+	if (code == KEY_HOME)
+		home_down_jiffies = value ? jiffies : 0;
+	else if (code == KEY_VOLUMEUP)
+		vol_up_jiffies = value ? jiffies : 0;
+	else {
+		home_down_jiffies = 0;
+		vol_up_jiffies = 0;
+	}
+
+	/* press home first and then vol up */
+	if (home_down_jiffies && vol_up_jiffies
+	    && time_after(vol_up_jiffies, home_down_jiffies)) {
+		pr_err("%s: %u msec after home down\n", __func__,
+		       jiffies_to_msecs(vol_up_jiffies - home_down_jiffies));
 #ifdef CONFIG_FB_S5P
 					read_lcd_register();
 #endif
@@ -730,19 +723,49 @@ void sec_debug_check_crash_key(unsigned int code, int value)
 #else
 					panic("Crash Key");
 #endif
+	}
+#else
+	/* Enter Force Upload
+	 *  Hold volume down key first
+	 *  and then press power key twice
+	 *  and volume up key should not be pressed
+	 */
+	if (value) {
+		if (code == KEY_VOLUMEUP)
+			volup_p = true;
+		if (code == KEY_VOLUMEDOWN)
+			voldown_p = true;
+		if (!volup_p && voldown_p) {
+			if (code == KEY_POWER) {
+				pr_info
+				    ("%s: count for enter forced upload : %d\n",
+				     __func__, ++loopcount);
+				if (loopcount == 2){
+#ifdef CONFIG_FB_S5P
+					read_lcd_register();
+#endif
+#ifdef CONFIG_SEC_DEBUG_FUPLOAD_DUMP_MORE
+					dump_state_and_upload();
+#else
+
+					panic("Crash Key");
+#endif
 				}
 			}
 		}
 	} else {
-		if (code == VOLUME_UP)
+		if (code == KEY_VOLUMEUP)
 			volup_p = false;
-		if (code == VOLUME_DOWN) {
+		if (code == KEY_VOLUMEDOWN) {
 			loopcount = 0;
 			voldown_p = false;
 		}
 	}
+#endif
 }
+
 #else
+
 static struct hrtimer upload_start_timer;
 
 static enum hrtimer_restart force_upload_timer_func(struct hrtimer *timer)
@@ -760,7 +783,7 @@ void sec_debug_check_crash_key(unsigned int code, int value)
 {
 	static bool vol_up, vol_down, check;
 
-	if (!sec_debug_level.en.kernel_fault)
+	if (!debug_level.en.kernel_fault)
 		return;
 
 	if ((code == KEY_VOLUMEUP) || (code == KEY_VOLUMEDOWN)) {

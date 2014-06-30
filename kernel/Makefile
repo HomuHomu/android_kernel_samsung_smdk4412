@@ -110,6 +110,9 @@ obj-$(CONFIG_CRASH_DUMP) += crash_dump.o
 ifeq ($(CONFIG_MACH_U1_NA_SPR),y)
 obj-$(CONFIG_SEC_DEBUG) += kernel_sec_debug.o
 endif
+ifeq ($(CONFIG_MACH_C1_KDDI_REV00),y)
+obj-$(CONFIG_SEC_DEBUG) += kernel_sec_debug.o
+endif
 
 ifneq ($(CONFIG_SCHED_OMIT_FRAME_POINTER),y)
 # According to Alan Modra <alan@linuxcare.com.au>, the -fno-omit-frame-pointer is

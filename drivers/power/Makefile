@@ -41,9 +41,9 @@ obj-$(CONFIG_CHARGER_MAX8997)	+= max8997_charger.o
 obj-$(CONFIG_CHARGER_MAX8997_U1)	+= max8997_charger_u1.o
 obj-$(CONFIG_CHARGER_MAX8922_U1)	+= max8922_charger_u1.o
 obj-$(CONFIG_CHARGER_MAX8997_PX)	+= max8997_charger_px.o
-ifeq ($(CONFIG_TARGET_LOCALE_KOR),y)
-obj-$(CONFIG_BATTERY_SEC_U1)	+= sec_battery_u1_kor.o
-obj-$(CONFIG_BATTERY_MAX17042_FUELGAUGE_U1)	+= max17042_fuelgauge_u1_kor.o
+ifeq ($(CONFIG_MACH_C1_KDDI_REV00),y)
+obj-$(CONFIG_BATTERY_SEC_U1)	+= sec_battery_dali.o
+obj-$(CONFIG_BATTERY_MAX17042_FUELGAUGE_U1)	+= max17042_fuelgauge_dali.o
 else
 obj-$(CONFIG_BATTERY_SEC_U1)	+= sec_battery_u1.o
 obj-$(CONFIG_BATTERY_MAX17042_FUELGAUGE_U1)	+= max17042_fuelgauge_u1.o
