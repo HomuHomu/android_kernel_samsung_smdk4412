@@ -277,6 +277,8 @@ static int __init u1_sec_switch_init(void)
 static int uart_switch_init(void)
 {
 	int ret, val;
+	struct device *uartswitch_dev = NULL;
+
 	MUIC_PRINT_LOG();
 
 	ret = gpio_request(GPIO_UART_SEL, "UART_SEL");

@@ -373,6 +373,7 @@ date      revision  author  description
 #include "issp_defs.h"
 #include "issp_errors.h"
 #include <linux/i2c/touchkey_i2c.h>
+#include "u1-cypress-gpio.h"
 
 struct touchkey_i2c *issp_tkey_i2c;
 
@@ -640,6 +641,353 @@ void ErrorTrap(unsigned char bErrorNumber)
 /* Based on the diagram in the AN2026                                        */
 /* ========================================================================= */
 
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+int ISSP_main(void)
+{
+	unsigned long flags;
+
+	// -- This example section of commands show the high-level calls to -------
+	// -- perform Target Initialization, SilcionID Test, Bulk-Erase, Target ---
+	// -- RAM Load, FLASH-Block Program, and Target Checksum Verification. ----
+
+	// >>>> ISSP Programming Starts Here <<<<
+	// Acquire the device through reset or power cycle
+	s3c_gpio_setpull(_3_TOUCH_SCL_28V, S3C_GPIO_PULL_NONE);
+	s3c_gpio_setpull(_3_TOUCH_SDA_28V, S3C_GPIO_PULL_NONE);
+	gpio_direction_output(_3_GPIO_TOUCH_EN, 0);
+    /* disable ldo11 */
+//	touchkey_ldo_on(0);
+	msleep(1);
+#ifdef RESET_MODE
+	gpio_tlmm_config(LED_26V_EN);
+	gpio_tlmm_config(EXT_TSP_SCL);
+	gpio_tlmm_config(EXT_TSP_SDA);
+	gpio_tlmm_config(LED_RST);
+
+	gpio_out(LED_RST, GPIO_LOW_VALUE);
+	clk_busy_wait(10);
+
+	gpio_out(LED_26V_EN, GPIO_HIGH_VALUE);
+	for (temp = 0; temp < 16; temp++) {
+		clk_busy_wait(1000);
+		dog_kick();
+	}
+
+	// Initialize the Host & Target for ISSP operations
+	printk("fXRESInitializeTargetForISSP Start\n");
+
+	local_save_flags(flags);
+	local_irq_disable();
+	if (fIsError = fXRESInitializeTargetForISSP()) {
+		ErrorTrap(fIsError);
+		return fIsError;
+	}
+#else
+	// Initialize the Host & Target for ISSP operations
+#if defined(CONFIG_MACH_C1_KDDI_REV00)	
+	if ((fIsError = fPowerCycleInitializeTargetForISSP()))
+#else
+	if ((fIsError = fPowerCycleInitializeTargetForISSP(flags)))
+#endif
+	{
+		ErrorTrap(fIsError);
+		return fIsError;
+	}
+#endif				/* RESET_MODE */
+	local_irq_save(flags);
+	if ((fIsError = fEraseTarget())) {
+		ErrorTrap(fIsError);
+		return fIsError;
+	}
+	local_irq_restore(flags);
+	iChecksumData = 0;
+	for (bBankCounter = 0; bBankCounter < NUM_BANKS; bBankCounter++)
+	{
+		local_irq_save(flags);
+		for (iBlockCounter = 0; iBlockCounter < BLOCKS_PER_BANK;
+		     iBlockCounter++) {
+#ifdef CY8C20x66
+			if ((fIsError = fSyncEnable())) {
+				ErrorTrap(fIsError);
+				return fIsError;
+			}
+			if ((fIsError = fReadWriteSetup())) {
+				ErrorTrap(fIsError);
+				return fIsError;
+			}
+#endif
+			LoadProgramData((unsigned char)iBlockCounter, bBankCounter);
+			iChecksumData += iLoadTarget();
+
+			if ((fIsError =
+			    fProgramTargetBlock(bBankCounter,
+						(unsigned char)iBlockCounter))) {
+				ErrorTrap(fIsError);
+				return fIsError;
+			}
+#ifdef CY8C20x66
+			if ((fIsError = fReadStatus())) {
+				ErrorTrap(fIsError);
+				return fIsError;
+			}
+#endif
+		}
+		local_irq_restore(flags);
+	}
+
+#if 1				/* security start */
+	//=======================================================//
+	// Program security data into target PSoC. In the final application this
+	// data should come from the HEX output of PSoC Designer.
+	local_irq_save(flags);
+	for (bBankCounter = 0; bBankCounter < NUM_BANKS; bBankCounter++) {
+#ifdef CY8C20x66
+		if ((fIsError = fSyncEnable())) {
+			ErrorTrap(fIsError);
+			return fIsError;
+		}
+		if ((fIsError = fReadWriteSetup())) {
+			ErrorTrap(fIsError);
+			return fIsError;
+		}
+#endif
+		if ((fIsError = fLoadSecurityData(bBankCounter))) {
+			ErrorTrap(fIsError);
+			return fIsError;
+		}
+		if ((fIsError = fSecureTargetFlash())) {
+			ErrorTrap(fIsError);
+			return fIsError;
+		}
+	}
+	local_irq_restore(flags);
+
+
+	//==============================================================//
+	//PTJ: Do READ-SECURITY after SECURE
+
+	//Load one bank of security data from hex file into buffer
+	//loads abTargetDataOUT[] with security data that was used in secure bit stream
+	local_irq_save(flags);
+	if ((fIsError = fLoadSecurityData(bBankCounter))) {
+		ErrorTrap(fIsError);
+		return fIsError;
+	}
+#ifdef CY8C20x66
+	if ((fIsError = fReadSecurity())) {
+		ErrorTrap(fIsError);
+		return fIsError;
+	}
+#endif
+	local_irq_restore(flags);
+#endif				/* security end */
+
+	//=======================================================//
+	//PTJ: Doing Checksum after READ-SECURITY
+	local_irq_save(flags);
+	iChecksumTarget = 0;
+	for (bBankCounter = 0; bBankCounter < NUM_BANKS; bBankCounter++) {
+		if ((fIsError = fAccTargetBankChecksum(&iChecksumTarget))) {
+			ErrorTrap(fIsError);
+			return fIsError;
+		}
+	}
+
+	local_irq_restore(flags);
+
+	if ((unsigned short)(iChecksumTarget & 0xffff) !=
+	    (unsigned short)(iChecksumData & 0xffff)) {
+		ErrorTrap(VERIFY_ERROR);
+		return fIsError;
+	}
+
+	// *** SUCCESS ***
+	// At this point, the Target has been successfully Initialize, ID-Checked,
+	// Bulk-Erased, Block-Loaded, Block-Programmed, Block-Verified, and Device-
+	// Checksum Verified.
+
+	// You may want to restart Your Target PSoC Here.
+	local_irq_enable();
+	ReStartTarget();	//Touch IC Reset.
+
+    msleep(100);
+	return 0;
+}
+////////////
+#else
+int ISSP_main(void)
+{
+	unsigned long flags;
+
+	// -- This example section of commands show the high-level calls to -------
+	// -- perform Target Initialization, SilcionID Test, Bulk-Erase, Target ---
+	// -- RAM Load, FLASH-Block Program, and Target Checksum Verification. ----
+
+	// >>>> ISSP Programming Starts Here <<<<
+	// Acquire the device through reset or power cycle
+	s3c_gpio_setpull(_3_TOUCH_SCL_28V, S3C_GPIO_PULL_NONE);
+	s3c_gpio_setpull(_3_TOUCH_SDA_28V, S3C_GPIO_PULL_NONE);
+	gpio_direction_output(_3_GPIO_TOUCH_EN, 0);
+    /* disable ldo11 */
+//	touchkey_ldo_on(0);
+	msleep(1);
+#ifdef RESET_MODE
+	gpio_tlmm_config(LED_26V_EN);
+	gpio_tlmm_config(EXT_TSP_SCL);
+	gpio_tlmm_config(EXT_TSP_SDA);
+	gpio_tlmm_config(LED_RST);
+
+	gpio_out(LED_RST, GPIO_LOW_VALUE);
+	clk_busy_wait(10);
+
+	gpio_out(LED_26V_EN, GPIO_HIGH_VALUE);
+	for (temp = 0; temp < 16; temp++) {
+		clk_busy_wait(1000);
+		dog_kick();
+	}
+
+	// Initialize the Host & Target for ISSP operations
+	printk("fXRESInitializeTargetForISSP Start\n");
+
+	local_save_flags(flags);
+	local_irq_disable();
+	if (fIsError = fXRESInitializeTargetForISSP()) {
+		ErrorTrap(fIsError);
+		return fIsError;
+	}
+#else
+	if ((fIsError = fPowerCycleInitializeTargetForISSP(flags))) {
+		ErrorTrap(fIsError);
+		return fIsError;
+	}
+#endif				/* RESET_MODE */
+
+	fVerifySiliconID();	// .. error // issp_test_20100709 unblock
+	local_irq_save(flags);
+	if ((fIsError = fEraseTarget())) {
+		ErrorTrap(fIsError);
+		return fIsError;
+	}
+	local_irq_restore(flags);
+	//printk("fEraseTarget END\n"); // issp_test_2010 block
+
+	//==============================================================//
+	// Program Flash blocks with predetermined data. In the final application
+	// this data should come from the HEX output of PSoC Designer.
+
+	iChecksumData = 0;	// Calculte the device checksum as you go
+	for (bBankCounter = 0; bBankCounter < NUM_BANKS; bBankCounter++)	//PTJ: NUM_BANKS should be 1 for Krypton
+	{
+		local_irq_save(flags);
+		for (iBlockCounter = 0; iBlockCounter < BLOCKS_PER_BANK;
+		     iBlockCounter++) {
+
+			//PTJ: READ-WRITE-SETUP used here to select SRAM Bank 1, and TSYNC Enable
+#ifdef CY8C20x66
+			if ((fIsError = fSyncEnable())) {
+				ErrorTrap(fIsError);
+				return fIsError;
+			}
+			if ((fIsError = fReadWriteSetup())) {	// send write command - swanhan
+				ErrorTrap(fIsError);
+				return fIsError;
+			}
+#endif
+			//firmware read.
+			//LoadProgramData(bBankCounter, (unsigned char)iBlockCounter);                      //PTJ: this loads the Hydra with test data, not the krypton
+			LoadProgramData((unsigned char)iBlockCounter, bBankCounter);	//PTJ: this loads the Hydra with test data, not the krypton
+			iChecksumData += iLoadTarget();	//PTJ: this loads the Krypton
+
+			if ((fIsError =
+			    fProgramTargetBlock(bBankCounter,
+						(unsigned char)iBlockCounter))) {
+				ErrorTrap(fIsError);
+				return fIsError;
+			}
+#ifdef CY8C20x66		//PTJ: READ-STATUS after PROGRAM-AND-VERIFY
+			if ((fIsError = fReadStatus())) {
+				ErrorTrap(fIsError);
+				return fIsError;
+			}
+#endif
+		}
+		local_irq_restore(flags);
+	}
+
+#if 1				/* security start */
+	//=======================================================//
+	// Program security data into target PSoC. In the final application this
+	// data should come from the HEX output of PSoC Designer.
+	//printk("Program security data START\n");
+	//INTLOCK();
+	local_irq_save(flags);
+	for (bBankCounter = 0; bBankCounter < NUM_BANKS; bBankCounter++) {
+		//PTJ: READ-WRITE-SETUP used here to select SRAM Bank 1
+#ifdef CY8C20x66
+		if ((fIsError = fSyncEnable())) {	//PTJ: 307, added for tsync enable testing.
+			ErrorTrap(fIsError);
+			return fIsError;
+		}
+		if ((fIsError = fReadWriteSetup())) {
+			ErrorTrap(fIsError);
+			return fIsError;
+		}
+#endif
+		// Load one bank of security data from hex file into buffer
+		if ((fIsError = fLoadSecurityData(bBankCounter))) {
+			ErrorTrap(fIsError);
+			return fIsError;
+		}
+		// Secure one bank of the target flash
+		if ((fIsError = fSecureTargetFlash())) {
+			ErrorTrap(fIsError);
+			return fIsError;
+		}
+	}
+	local_irq_restore(flags);
+	local_irq_save(flags);
+	if ((fIsError = fLoadSecurityData(bBankCounter))) {
+		ErrorTrap(fIsError);
+		return fIsError;
+	}
+#ifdef CY8C20x66
+	if ((fIsError = fReadSecurity())) {
+		ErrorTrap(fIsError);
+		return fIsError;
+	}
+#endif
+	local_irq_restore(flags);
+#endif				/* security end */
+
+	//=======================================================//
+	//PTJ: Doing Checksum after READ-SECURITY
+	local_irq_save(flags);
+	iChecksumTarget = 0;
+	for (bBankCounter = 0; bBankCounter < NUM_BANKS; bBankCounter++) {
+		if ((fIsError = fAccTargetBankChecksum(&iChecksumTarget))) {
+			ErrorTrap(fIsError);
+			return fIsError;
+		}
+	}
+
+	local_irq_restore(flags);
+
+	if ((unsigned short)(iChecksumTarget & 0xffff) !=
+	    (unsigned short)(iChecksumData & 0xffff)) {
+		ErrorTrap(VERIFY_ERROR);
+		return fIsError;
+	}
+	local_irq_enable();
+	ReStartTarget();	//Touch IC Reset.
+
+    msleep(100);
+	return 0;
+}
+#endif
+// end of main()
+
+#endif				//(PROJECT_REV_) end of file main.c
+#if 0
 int ISSP_main(struct touchkey_i2c *tkey_i2c)
 {
 	unsigned long flags;
@@ -958,5 +1306,4 @@ this data should come from the HEX output of PSoC Designer.*/
 
 	return 0;
 }
-
 #endif				/*(PROJECT_REV_) end of file main.c */

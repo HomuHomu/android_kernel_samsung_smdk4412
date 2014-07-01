@@ -3828,10 +3828,11 @@ static struct max8997_muic_data max8997_muic = {
 #else
 	.host_notify_cb = NULL,
 #endif
-#if !defined(CONFIG_MACH_U1_NA_USCC)
+#if defined(CONFIG_TARGET_LOCALE_NA)
 	.gpio_uart_sel =  GPIO_UART_SEL,
-#endif
+#else
 	.gpio_usb_sel = GPIO_USB_SEL,
+#endif
 };
 
 static struct max8997_buck1_dvs_funcs *buck1_dvs_funcs;
@@ -6802,6 +6803,7 @@ static int cm3663_ldo(bool on)
 
 	return 0;
 }
+#endif
 
 #ifdef CONFIG_USBHUB_USB3803
 int usb3803_hw_config(void)
@@ -6840,15 +6842,18 @@ int usb3803_clock_en(int val)
 }
 #endif /* CONFIG_USBHUB_USB3803 */
 
+#ifdef CONFIG_SENSORS_CM3663
 static struct cm3663_platform_data cm3663_pdata = {
 	.proximity_power = cm3663_ldo,
 };
+#endif
+
 #ifdef CONFIG_SENSORS_PAS2M110
 static struct pas2m110_platform_data pas2m110_pdata = {
 	.proximity_power = cm3663_ldo,
 };
 #endif
-#endif
+
 #if defined (CONFIG_SENSORS_GP2A_ANALOG) || defined (CONFIG_OPTICAL_GP2AP020)
 static int gp2a_power(bool on)
 {
@@ -6885,7 +6890,7 @@ static struct i2c_board_info i2c_devs11_emul[] __initdata = {
                 .platform_data = &gp2a_pdata,
         },
 #endif
-#ifdef CONFIG_MACH_U1_BD
+#if defined (CONFIG_MACH_U1_BD) && defined (CONFIG_SENSORS_CM3663)
 	{
 		I2C_BOARD_INFO("cm3663", 0x20),
 		.irq = GPIO_PS_ALS_INT,

@@ -9,7 +9,7 @@ ifeq ($(CONFIG_MACH_U1_NA_SPR),y)
 EXTRA_CFLAGS		+= -DWESTBRIDGE_ASTORIA
 EXTRA_CFLAGS		+= -D__USE_CYAS_AUTO_SUSPEND__
 endif
-ifeq ($(CONFIG_MACH_U1_NA_USCC),y)
+ifeq ($(CONFIG_MACH_C1_KDDI_REV00),y)
 EXTRA_CFLAGS		+= -DWESTBRIDGE_ASTORIA
 EXTRA_CFLAGS		+= -D__USE_CYAS_AUTO_SUSPEND__
 endif
@@ -31,7 +31,7 @@ cyasdev-y		:= ../arch/arm/mach-c110/cyashalc110_pnand.o cyasdevice_na_spr.o \
 			   ../api/src/cyaslowlevel.o ../api/src/cyasmisc.o \
 			   ../api/src/cyasstorage.o  \
 			   ../block/cyasblkdev_block_na_spr.o ../block/cyasblkdev_queue_na_spr.o cyasdiagnostics.o
-else ifeq ($(CONFIG_MACH_U1_NA_USCC),y)
+else ifeq ($(CONFIG_MACH_C1_KDDI_REV00),y)
 cyasdev-y		:= ../arch/arm/mach-c110/cyashalc110_pnand.o cyasdevice_na_spr.o \
 			   ../api/src/cyasdma.o ../api/src/cyasintr.o ../api/src/cyaslep2pep.o \
 			   ../api/src/cyaslowlevel.o ../api/src/cyasmisc.o \

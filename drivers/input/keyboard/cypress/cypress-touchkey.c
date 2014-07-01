@@ -564,7 +564,7 @@ static int touchkey_firmware_update(struct touchkey_i2c *tkey_i2c)
 		tkey_i2c->update_status = TK_UPDATE_DOWN;
 
 		while (retry--) {
-			if (ISSP_main(tkey_i2c) == 0) {
+			if (ISSP_main() == 0) {
 				printk(KERN_DEBUG
 				       "[TouchKey]firmware update succeeded\n");
 				tkey_i2c->update_status = TK_UPDATE_PASS;
@@ -635,7 +635,7 @@ static int touchkey_firmware_update(struct touchkey_i2c *tkey_i2c)
 	if (tkey_i2c->firmware_ver < 0x0A) {
 		tkey_i2c->update_status = TK_UPDATE_DOWN;
 		while (retry--) {
-			if (ISSP_main(tkey_i2c) == 0) {
+			if (ISSP_main() == 0) {
 				printk(KERN_ERR
 				       "[TOUCHKEY]Touchkey_update succeeded\n");
 				tkey_i2c->update_status = TK_UPDATE_PASS;
@@ -1000,7 +1000,7 @@ void touchkey_update_func(struct work_struct *work)
 	printk(KERN_DEBUG "[TouchKey] %s start\n", __func__);
 	touchkey_enable = 0;
 	while (retry--) {
-		if (ISSP_main(tkey_i2c) == 0) {
+		if (ISSP_main() == 0) {
 			printk(KERN_DEBUG
 			       "[TouchKey] touchkey_update succeeded\n");
 			msleep(50);
@@ -1344,7 +1344,7 @@ static ssize_t set_touchkey_update_show(struct device *dev,
 #endif
 
 	while (retry--) {
-		if (ISSP_main(tkey_i2c) == 0) {
+		if (ISSP_main() == 0) {
 			printk(KERN_ERR
 			       "[TouchKey]Touchkey_update succeeded\n");
 			tkey_i2c->update_status = TK_UPDATE_PASS;

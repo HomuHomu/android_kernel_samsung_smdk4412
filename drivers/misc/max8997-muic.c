@@ -1706,6 +1706,7 @@ static int handle_attach(struct max8997_muic_info *info,
 static int handle_detach(struct max8997_muic_info *info)
 {
 	int ret = 0;
+	struct i2c_client *client = info->muic;
 
 #if defined(CONFIG_SEC_MODEM_M0_TD)
 	gpio_set_value(GPIO_AP_CP_INT1, 0);

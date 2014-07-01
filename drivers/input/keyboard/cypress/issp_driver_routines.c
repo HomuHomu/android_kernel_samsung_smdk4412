@@ -82,7 +82,11 @@ extern struct touchkey_i2c *issp_tkey_i2c;
 
 unsigned int nBlockCount = 1;	/*test, KIMC */
 
+#if defined(CONFIG_MACH_Q1_REV02) || defined(CONFIG_MACH_C1_KDDI_REV00)
+extern unsigned char *firmware_data;
+#else
 extern unsigned char firmware_data[];
+#endif
 
 /* ((((((((((((((((((((((( DEMO ISSP SUBROUTINE SECTION )))))))))))))))))))))))
 * ((((( Demo Routines can be deleted in final ISSP project if not used   )))))
