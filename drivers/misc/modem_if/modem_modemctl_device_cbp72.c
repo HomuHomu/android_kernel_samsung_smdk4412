@@ -1,4 +1,6 @@
-/*
+/* /linux/drivers/misc/modem_if/modem_modemctl_device_cbp7.1.c
+ *
+ * Copyright (C) 2010 Google, Inc.
  * Copyright (C) 2010 Samsung Electronics.
  *
  * This software is licensed under the terms of the GNU General Public
@@ -22,12 +24,13 @@
 #include <linux/sched.h>
 #include <linux/platform_device.h>
 
-#include "modem.h"
+#include <linux/platform_data/modem.h>
 #include "modem_prj.h"
 #include "modem_link_device_dpram.h"
 
 #define PIF_TIMEOUT		(180 * HZ)
 #define DPRAM_INIT_TIMEOUT	(30 * HZ)
+
 
 static irqreturn_t phone_active_handler(int irq, void *arg)
 {
@@ -40,10 +43,8 @@ static irqreturn_t phone_active_handler(int irq, void *arg)
 		phone_state, phone_reset, phone_active);
 
 	if (phone_reset && phone_active) {
-		if (mc->phone_state == STATE_BOOTING) {
-			phone_state = STATE_ONLINE;
-			mc->bootd->modem_state_changed(mc->bootd, phone_state);
-		}
+		phone_state = STATE_ONLINE;
+		mc->bootd->modem_state_changed(mc->bootd, phone_state);
 	} else if (phone_reset && !phone_active) {
 		if (mc->phone_state == STATE_ONLINE) {
 			phone_state = STATE_CRASH_EXIT;
@@ -68,10 +69,6 @@ static irqreturn_t phone_active_handler(int irq, void *arg)
 static int cbp72_on(struct modem_ctl *mc)
 {
 	mif_info("start!!!\n");
-
-	/* prevent sleep during bootloader downloading */
-	if (!wake_lock_active(&mc->mc_wake_lock))
-		wake_lock(&mc->mc_wake_lock);
 
 	gpio_set_value(mc->gpio_cp_on, 0);
 	if (mc->gpio_cp_off)
@@ -160,13 +157,13 @@ static int cbp72_boot_off(struct modem_ctl *mc)
 {
 	int ret;
 	struct link_device *ld = get_current_link(mc->bootd);
-
+	struct dpram_link_device *dpld = to_dpram_link_device(ld);
 	mif_debug("\n");
 	/* Wait here until the PHONE is up.
 	 * Waiting as the this called from IOCTL->UM thread */
 	mif_info("Waiting for INT_CMD_PHONE_START\n");
-	ret = wait_for_completion_interruptible_timeout(&ld->init_cmpl,
-			DPRAM_INIT_TIMEOUT);
+	ret = wait_for_completion_interruptible_timeout(
+			&dpld->dpram_init_cmd, DPRAM_INIT_TIMEOUT);
 	if (!ret) {
 		/* ret == 0 on timeout, ret < 0 if interrupted */
 		mif_err("Timeout!!! (PHONE_START was not arrived.)\n");
@@ -174,16 +171,13 @@ static int cbp72_boot_off(struct modem_ctl *mc)
 	}
 
 	mif_info("Waiting for INT_CMD_PIF_INIT_DONE\n");
-	ret = wait_for_completion_interruptible_timeout(&ld->pif_cmpl,
-			PIF_TIMEOUT);
+	ret = wait_for_completion_interruptible_timeout(
+			&dpld->modem_pif_init_done, PIF_TIMEOUT);
 	if (!ret) {
 		mif_err("Timeout!!! (PIF_INIT_DONE was not arrived.)\n");
 		return -ENXIO;
 	}
 	mc->bootd->modem_state_changed(mc->bootd, STATE_ONLINE);
-
-	wake_unlock(&mc->mc_wake_lock);
-
 	return 0;
 }
 
@@ -195,6 +189,10 @@ static int cbp72_force_crash_exit(struct modem_ctl *mc)
 
 	/* Make DUMP start */
 	ld->force_dump(ld, mc->bootd);
+
+	msleep_interruptible(1000);
+
+	mc->bootd->modem_state_changed(mc->bootd, STATE_CRASH_EXIT);
 
 	return 0;
 }
@@ -214,15 +212,16 @@ int cbp72_init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	int ret = 0;
 	int irq = 0;
 	unsigned long flag = 0;
+	struct platform_device *pdev = NULL;
 
-	mc->gpio_cp_on = pdata->gpio_cp_on;
-	mc->gpio_cp_off = pdata->gpio_cp_off;
-	mc->gpio_reset_req_n = pdata->gpio_reset_req_n;
-	mc->gpio_cp_reset = pdata->gpio_cp_reset;
-	mc->gpio_pda_active = pdata->gpio_pda_active;
-	mc->gpio_phone_active = pdata->gpio_phone_active;
-	mc->gpio_cp_dump_int = pdata->gpio_cp_dump_int;
-	mc->gpio_flm_uart_sel = pdata->gpio_flm_uart_sel;
+	mc->gpio_cp_on         = pdata->gpio_cp_on;
+	mc->gpio_cp_off        = pdata->gpio_cp_off;
+	mc->gpio_reset_req_n   = pdata->gpio_reset_req_n;
+	mc->gpio_cp_reset      = pdata->gpio_cp_reset;
+	mc->gpio_pda_active    = pdata->gpio_pda_active;
+	mc->gpio_phone_active  = pdata->gpio_phone_active;
+	mc->gpio_cp_dump_int   = pdata->gpio_cp_dump_int;
+	mc->gpio_flm_uart_sel  = pdata->gpio_flm_uart_sel;
 	mc->gpio_cp_warm_reset = pdata->gpio_cp_warm_reset;
 
 	if (!mc->gpio_cp_on || !mc->gpio_cp_reset || !mc->gpio_phone_active) {
@@ -237,9 +236,10 @@ int cbp72_init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 
 	cbp72_get_ops(mc);
 
-	mc->irq_phone_active = pdata->irq_phone_active;
+	pdev = to_platform_device(mc->dev);
+	mc->irq_phone_active = platform_get_irq_byname(pdev, "cp_active_irq");
 	if (!mc->irq_phone_active) {
-		mif_err("get irq_phone_active fail\n");
+		mif_err("get irq fail\n");
 		return -1;
 	}
 
@@ -252,8 +252,6 @@ int cbp72_init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 		mif_err("request_irq fail (%d)\n", ret);
 		return ret;
 	}
-
-	wake_lock_init(&mc->mc_wake_lock, WAKE_LOCK_SUSPEND, "cbp72_wake_lock");
 
 	ret = enable_irq_wake(irq);
 	if (ret)

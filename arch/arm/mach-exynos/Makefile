@@ -77,13 +77,24 @@ obj-$(CONFIG_MACH_U1)			+= mach-u1.o sec-common.o sec-switch_max8997.o
 obj-$(CONFIG_WIMAX_CMC)			+= u1-wimax.o
 ifneq ($(CONFIG_MACH_U1_NA_SPR),y)
 ifneq ($(CONFIG_MACH_U1_NA_USCC),y)
+ifeq ($(CONFIG_MACH_C1_KDDI_REV00),y)
+obj-$(CONFIG_MACH_U1_BD)		+= u1-gpio.o
+else
 obj-$(CONFIG_MACH_U1_BD)		+= u1-gpio.o board-gps-gsd4t.o
-else
-obj-$(CONFIG_MACH_U1_BD)		+= u1-gpio.o
 endif
 else
-obj-$(CONFIG_MACH_U1_BD)		+= u1-gpio.o
+ifeq ($(CONFIG_MACH_C1_KDDI_REV00),y)
+obj-$(CONFIG_MACH_U1)			+= mach-u1.o dev-u1-phone.o
+else
+ifeq ($(CONFIG_MACH_U1CAMERA_BD),y)
+obj-$(CONFIG_MACH_U1)			+= mach-u1cam.o
+else
+obj-$(CONFIG_MACH_U1)			+= mach-u1.o
 endif
+endif
+endif
+endif
+obj-$(CONFIG_MACH_U1)			+= sec-common.o sec-switch_max8997.o
 ifeq ($(CONFIG_MACH_U1_NA_SPR),y)
 obj-$(CONFIG_MACH_U1)			+= dev-c1-phone.o
 endif
@@ -330,7 +341,7 @@ obj-$(CONFIG_SEC_MODEM_M1)		+= board-c1-modems.o
 obj-$(CONFIG_SEC_MODEM_C1)		+= board-c1-modems.o
 obj-$(CONFIG_SEC_MODEM_C1_LGT)		+= board-c1lgt-modems.o
 obj-$(CONFIG_SEC_MODEM_U1)		+= board-u1-modems.o
-obj-$(CONFIG_SEC_MODEM_U1_SPR)		+= board-u1-spr-modems.o
+obj-$(CONFIG_SEC_MODEM_U1_SPR)		+= board-u1-spr-modem.o
 obj-$(CONFIG_SEC_MODEM_U1_LGT)		+= board-u1-lgt-modems.o
 obj-$(CONFIG_SEC_MODEM_P8LTE)		+= board-p8ltevzw-modems.o
 obj-$(CONFIG_SEC_DEBUG)			+= sec_debug.o sec_getlog.o sec_gaf.o

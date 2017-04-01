@@ -24,7 +24,7 @@
 #include <linux/interrupt.h>
 
 /* inlcude platform specific file */
-#include <linux/platform_data/modem_na_spr.h>
+#include <linux/platform_data/modem.h>
 #include <mach/gpio.h>
 #include <plat/gpio-cfg.h>
 

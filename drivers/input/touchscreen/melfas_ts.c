@@ -1757,7 +1757,16 @@ extern unsigned int is_lpcharging_state(void);
 
 static int __devinit melfas_ts_init(void)
 {
-#ifdef CONFIG_BATTERY_SEC
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+	extern int sec_isLpmMode(void);
+
+	if (sec_isLpmMode())
+	{
+		printk(KERN_ERR "LPM MODE (melfas_ts_init)!\n");
+		return 0;
+	}
+
+#elif CONFIG_BATTERY_SEC
 	if (is_lpcharging_state()) {
 		pr_info("%s : LPM Charging Mode! return 0\n", __func__);
 		return 0;

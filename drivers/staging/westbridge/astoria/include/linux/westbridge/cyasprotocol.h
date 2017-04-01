@@ -1947,7 +1947,7 @@
 	* CY_RESP_SUCCESS_FAILURE:CY_AS_ERROR_SUCCESS
 */
 #define CY_RQT_P2S_DMA_START (35)
-#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
+
 /* Summary
    Changes the operating frequency of the SD card dynamically.
 
@@ -1974,7 +1974,7 @@
     * CY_RESP_SUCCESS_FAILURE
  */
 #define CY_RQT_CHANGE_SD_FREQ (36)
-#endif
+
 
 /******************************************************/
 

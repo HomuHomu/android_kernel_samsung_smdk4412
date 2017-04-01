@@ -72,6 +72,13 @@ config SENSORS_GP2A
 	help
 	  This option enables proximity & light sensors using gp2ap020a00f driver.
 
+config OPTICAL_GP2AP020
+        depends on I2C && GENERIC_GPIO
+        tristate "GP2AP020 ambient light and proximity input device"
+        default n
+        help
+          This option enables proximity & light sensors using gp2a driver.
+
 config SENSORS_GP2A_ANALOG
 	depends on I2C
 	tristate "GP2A analog driver"

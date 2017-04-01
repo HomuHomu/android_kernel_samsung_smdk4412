@@ -27,37 +27,17 @@
 
 #include "modem_link_pm_usb.h"
 
-int during_hub_resume;
-
-static inline void start_hub_work(struct link_pm_data *pm_data, int delay)
-{
-	if (pm_data->hub_work_running == false) {
-		pm_data->hub_work_running = true;
-		wake_lock(&pm_data->hub_lock);
-		mif_debug("link_pm_hub_work is started\n");
-		during_hub_resume = 1;
-	}
-
-	schedule_delayed_work(&pm_data->link_pm_hub, msecs_to_jiffies(delay));
-}
-
-static inline void end_hub_work(struct link_pm_data *pm_data)
-{
-	wake_unlock(&pm_data->hub_lock);
-	pm_data->hub_work_running = false;
-	mif_debug("link_pm_hub_work is done\n");
-}
-
 bool link_pm_is_connected(struct usb_link_device *usb_ld)
 {
 	if (has_hub(usb_ld)) {
-		struct link_pm_data *pm_data = usb_ld->link_pm_data;
-		if (pm_data->hub_init_lock)
+		if (usb_ld->link_pm_data->hub_init_lock)
 			return false;
 
-		if (pm_data->hub_status == HUB_STATE_OFF) {
-			if (pm_data->hub_work_running == false)
-				start_hub_work(pm_data, 0);
+		if (usb_ld->link_pm_data->hub_status != HUB_STATE_ACTIVE) {
+			mif_debug("hub_status=%d\n",
+					usb_ld->link_pm_data->hub_status);
+			schedule_delayed_work(
+					&usb_ld->link_pm_data->link_pm_hub, 0);
 			return false;
 		}
 	}
@@ -70,41 +50,27 @@ bool link_pm_is_connected(struct usb_link_device *usb_ld)
 	return true;
 }
 
-void link_pm_preactive(struct link_pm_data *pm_data)
-{
-	if (pm_data->root_hub) {
-		mif_info("pre-active\n");
-		pm_data->hub_on_retry_cnt = 0;
-		complete(&pm_data->hub_active);
-		pm_runtime_put_sync(pm_data->root_hub);
-	}
-
-	pm_data->hub_status = HUB_STATE_ACTIVE;
-}
-
 static void link_pm_hub_work(struct work_struct *work)
 {
-	int err, cnt;
+	int err;
 	struct link_pm_data *pm_data =
 		container_of(work, struct link_pm_data, link_pm_hub.work);
 
-	if (pm_data->hub_status == HUB_STATE_ACTIVE) {
-		end_hub_work(pm_data);
-		during_hub_resume = 0;
+	if (pm_data->hub_status == HUB_STATE_ACTIVE)
 		return;
-	}
 
 	if (!pm_data->port_enable) {
 		mif_err("mif: hub power func not assinged\n");
-		end_hub_work(pm_data);
 		return;
 	}
+	wake_lock(&pm_data->hub_lock);
 
 	/* If kernel if suspend, wait the ehci resume */
 	if (pm_data->dpm_suspending) {
 		mif_info("dpm_suspending\n");
-		start_hub_work(pm_data, 500);
-		return;
+		schedule_delayed_work(&pm_data->link_pm_hub,
+						msecs_to_jiffies(500));
+		goto exit;
 	}
 
 	switch (pm_data->hub_status) {
@@ -115,16 +81,7 @@ static void link_pm_hub_work(struct work_struct *work)
 		/* skip 1st time before first probe */
 		if (pm_data->root_hub)
 			pm_runtime_get_sync(pm_data->root_hub);
-
-		for (cnt=0;cnt<5;cnt++) {
-			err = pm_data->port_enable(2, 1);
-			if (err >= 0) {
-				mif_err("hub on success\n");
-				break;
-			}
-			mif_err("hub on fail %d th\n", cnt);
-			msleep(100);
-		}
+		err = pm_data->port_enable(2, 1);
 		if (err < 0) {
 			mif_err("hub on fail err=%d\n", err);
 			err = pm_data->port_enable(2, 0);
@@ -133,11 +90,11 @@ static void link_pm_hub_work(struct work_struct *work)
 			pm_data->hub_status = HUB_STATE_OFF;
 			if (pm_data->root_hub)
 				pm_runtime_put_sync(pm_data->root_hub);
-			end_hub_work(pm_data);
-		} else {
-			/* resume root hub */
-			start_hub_work(pm_data, 100);
+			goto exit;
 		}
+		/* resume root hub */
+		schedule_delayed_work(&pm_data->link_pm_hub,
+						msecs_to_jiffies(100));
 		break;
 	case HUB_STATE_RESUMMING:
 		if (pm_data->hub_on_retry_cnt++ > 50) {
@@ -145,28 +102,34 @@ static void link_pm_hub_work(struct work_struct *work)
 			pm_data->hub_status = HUB_STATE_OFF;
 			if (pm_data->root_hub)
 				pm_runtime_put_sync(pm_data->root_hub);
-
-			mif_err("USB Hub resume fail !!!\n");
-			end_hub_work(pm_data);
-		} else {
-			mif_info("hub resumming: %d\n",
-					pm_data->hub_on_retry_cnt);
-			start_hub_work(pm_data, 200);
 		}
+		mif_trace("hub resumming\n");
+		schedule_delayed_work(&pm_data->link_pm_hub,
+						msecs_to_jiffies(200));
+		break;
+	case HUB_STATE_PREACTIVE:
+		pm_data->hub_status = HUB_STATE_ACTIVE;
+		mif_trace("hub active\n");
+		pm_data->hub_on_retry_cnt = 0;
+		wake_unlock(&pm_data->hub_lock);
+		complete(&pm_data->hub_active);
+		if (pm_data->root_hub)
+			pm_runtime_put_sync(pm_data->root_hub);
 		break;
 	}
 exit:
 	return;
 }
 
-static int link_pm_hub_standby(void *args)
+static int link_pm_hub_standby(struct link_pm_data *pm_data)
 {
-	struct link_pm_data *pm_data = args;
 	struct usb_link_device *usb_ld = pm_data->usb_ld;
 	int err = 0;
 
+	mif_info("wait hub standby\n");
+
 	if (!pm_data->port_enable) {
-		mif_err("port power func not assinged\n");
+		mif_err("hub power func not assinged\n");
 		return -ENODEV;
 	}
 
@@ -175,10 +138,6 @@ static int link_pm_hub_standby(void *args)
 		mif_err("hub off fail err=%d\n", err);
 
 	pm_data->hub_status = HUB_STATE_OFF;
-
-	/* this function is atomic.
-	 * make force disconnect in workqueue..
-	 */
 	return err;
 }
 
@@ -186,6 +145,7 @@ bool link_pm_set_active(struct usb_link_device *usb_ld)
 {
 	int ret;
 	struct link_pm_data *pm_data = usb_ld->link_pm_data;
+	struct device *dev;
 
 	if (has_hub(usb_ld)) {
 		if (pm_data->hub_status != HUB_STATE_ACTIVE) {
@@ -199,6 +159,10 @@ bool link_pm_set_active(struct usb_link_device *usb_ld)
 				queue_delayed_work(usb_ld->ld.tx_wq,
 						&usb_ld->ld.tx_delayed_work, 0);
 				return false;
+			} else {
+				mif_err("wait done\n");
+				usb_make_resume(usb_ld);
+				return true;
 			}
 		}
 	} else {
@@ -212,7 +176,6 @@ static long link_pm_ioctl(struct file *file, unsigned int cmd,
 {
 	int value, err = 0;
 	struct link_pm_data *pm_data = file->private_data;
-	struct usb_link_device *usb_ld = pm_data->usb_ld;
 
 	mif_info("cmd: 0x%08x\n", cmd);
 
@@ -222,18 +185,19 @@ static long link_pm_ioctl(struct file *file, unsigned int cmd,
 							sizeof(int)))
 			return -EFAULT;
 		gpio_set_value(pm_data->gpio_link_active, value);
-		mif_info("> H-ACT %d\n", value);
 		break;
 	case IOCTL_LINK_GET_HOSTWAKE:
 		return !gpio_get_value(pm_data->gpio_link_hostwake);
 	case IOCTL_LINK_CONNECTED:
-		return usb_ld->if_usb_connected;
-	case IOCTL_LINK_PORT_ON:
+		return pm_data->usb_ld->if_usb_connected;
+	case IOCTL_LINK_PORT_ON: /* hub only */
 		/* ignore cp host wakeup irq, set the hub_init_lock when AP try
 		 CP off and release hub_init_lock when CP boot done */
 		pm_data->hub_init_lock = 0;
-		if (pm_data->root_hub)
-			pm_runtime_get_sync(pm_data->root_hub);
+		if (pm_data->root_hub) {
+			pm_runtime_resume(pm_data->root_hub);
+			pm_runtime_forbid(pm_data->root_hub->parent);
+		}
 		if (pm_data->port_enable) {
 			err = pm_data->port_enable(2, 1);
 			if (err < 0) {
@@ -243,14 +207,25 @@ static long link_pm_ioctl(struct file *file, unsigned int cmd,
 			pm_data->hub_status = HUB_STATE_RESUMMING;
 		}
 		break;
-	case IOCTL_LINK_PORT_OFF:
+	case IOCTL_LINK_PORT_OFF: /* hub only */
+		if (pm_data->usb_ld->if_usb_connected) {
+			struct usb_device *udev =
+					pm_data->usb_ld->usbdev->parent;
+			pm_runtime_get_sync(&udev->dev);
+			if (udev->state != USB_STATE_NOTATTACHED) {
+				usb_force_disconnect(udev);
+				pr_info("force disconnect maybe cp-reset!!\n");
+			}
+			pm_runtime_put_autosuspend(&udev->dev);
+		}
 		err = link_pm_hub_standby(pm_data);
 		if (err < 0) {
-			mif_err("usb3503 standby fail\n");
+			mif_err("usb3503 active fail\n");
 			goto exit;
 		}
 		pm_data->hub_init_lock = 1;
 		pm_data->hub_handshake_done = 0;
+
 		break;
 	default:
 		break;
@@ -258,50 +233,6 @@ static long link_pm_ioctl(struct file *file, unsigned int cmd,
 exit:
 	return err;
 }
-
-static ssize_t show_autosuspend(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	char *p = buf;
-	struct miscdevice *miscdev = dev_get_drvdata(dev);
-	struct link_pm_data *pm_data = container_of(miscdev,
-			struct link_pm_data, miscdev);
-	struct usb_link_device *usb_ld = pm_data->usb_ld;
-
-	p += sprintf(buf, "%s\n", pm_data->autosuspend ? "on" : "off");
-
-	return p - buf;
-}
-
-static ssize_t store_autosuspend(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct miscdevice *miscdev = dev_get_drvdata(dev);
-	struct link_pm_data *pm_data = container_of(miscdev,
-			struct link_pm_data, miscdev);
-	struct usb_link_device *usb_ld = pm_data->usb_ld;
-	struct task_struct *task = get_current();
-	char taskname[TASK_COMM_LEN];
-
-	mif_info("autosuspend: %s: %s(%d)'\n",
-			buf, get_task_comm(taskname, task), task->pid);
-
-	if (!strncmp(buf, "on", 2)) {
-		pm_data->autosuspend = true;
-		if (usb_ld->usbdev)
-			pm_runtime_allow(&usb_ld->usbdev->dev);
-	} else if (!strncmp(buf, "off", 3)) {
-		pm_data->autosuspend = false;
-		if (usb_ld->usbdev)
-			pm_runtime_forbid(&usb_ld->usbdev->dev);
-	}
-
-	return count;
-}
-
-static struct device_attribute attr_autosuspend =
-		__ATTR(autosuspend, S_IRUGO | S_IWUSR,
-		show_autosuspend, store_autosuspend);
 
 static int link_pm_open(struct inode *inode, struct file *file)
 {
@@ -329,13 +260,11 @@ static int link_pm_notifier_event(struct notifier_block *this,
 {
 	struct link_pm_data *pm_data =
 			container_of(this, struct link_pm_data,	pm_notifier);
-	struct usb_link_device *usb_ld = pm_data->usb_ld;
 
 	switch (event) {
 	case PM_SUSPEND_PREPARE:
 		pm_data->dpm_suspending = true;
-		if (has_hub(usb_ld))
-			link_pm_hub_standby(pm_data);
+		link_pm_hub_standby(pm_data);
 		return NOTIFY_OK;
 	case PM_POST_SUSPEND:
 		pm_data->dpm_suspending = false;
@@ -364,31 +293,22 @@ int link_pm_init(struct usb_link_device *usb_ld, void *data)
 	pm_data->gpio_link_slavewake = pm_pdata->gpio_link_slavewake;
 	pm_data->link_reconnect = pm_pdata->link_reconnect;
 	pm_data->port_enable = pm_pdata->port_enable;
-	pm_data->freq_lock = pm_pdata->freq_lock;
-	pm_data->freq_unlock = pm_pdata->freq_unlock;
+	pm_data->cpufreq_lock = pm_pdata->cpufreq_lock;
+	pm_data->cpufreq_unlock = pm_pdata->cpufreq_unlock;
 	pm_data->autosuspend_delay_ms = pm_pdata->autosuspend_delay_ms;
-	pm_data->autosuspend = true;
 
 	pm_data->usb_ld = usb_ld;
+	pm_data->link_pm_active = false;
 	usb_ld->link_pm_data = pm_data;
 
 	pm_data->miscdev.minor = MISC_DYNAMIC_MINOR;
 	pm_data->miscdev.name = "link_pm";
 	pm_data->miscdev.fops = &link_pm_fops;
 
-	during_hub_resume = 0;
-
 	err = misc_register(&pm_data->miscdev);
 	if (err < 0) {
 		mif_err("fail to register pm device(%d)\n", err);
 		goto err_misc_register;
-	}
-
-	err = device_create_file(pm_data->miscdev.this_device,
-			&attr_autosuspend);
-	if (err) {
-		mif_err("fail to create file: autosuspend: %d\n", err);
-		goto err_create_file;
 	}
 
 	pm_data->hub_init_lock = 1;
@@ -406,16 +326,12 @@ int link_pm_init(struct usb_link_device *usb_ld, void *data)
 	if (has_hub(usb_ld)) {
 		init_completion(&pm_data->hub_active);
 		pm_data->hub_status = HUB_STATE_OFF;
+		pm_pdata->p_hub_status = &pm_data->hub_status;
 		pm_data->hub_handshake_done = 0;
 		pm_data->root_hub = NULL;
-
-		pm_pdata->hub_standby = link_pm_hub_standby;
-		pm_pdata->hub_pm_data = pm_data;
-
 		wake_lock_init(&pm_data->hub_lock, WAKE_LOCK_SUSPEND,
 				"modem_hub_enum_lock");
 		INIT_DELAYED_WORK(&pm_data->link_pm_hub, link_pm_hub_work);
-		pm_data->hub_work_running = false;
 	}
 
 	pm_data->pm_notifier.notifier_call = link_pm_notifier_event;
@@ -424,9 +340,10 @@ int link_pm_init(struct usb_link_device *usb_ld, void *data)
 	return 0;
 
 err_request_irq:
-err_create_file:
 	misc_deregister(&pm_data->miscdev);
 err_misc_register:
 	kfree(pm_data);
 	return err;
 }
+
+

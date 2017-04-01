@@ -60,7 +60,7 @@ ifeq ($(CONFIG_SEC_MODEM_P8LTE),y)
 obj-$(CONFIG_SEC_MODEM)         += modem_if_na/
 else
 ifeq ($(CONFIG_MACH_U1),y)
-obj-$(CONFIG_SEC_MODEM)		+= modem_if_u1/
+obj-$(CONFIG_SEC_MODEM)		+= modem_if/
 else
 obj-$(CONFIG_SEC_MODEM)		+= modem_if/
 endif

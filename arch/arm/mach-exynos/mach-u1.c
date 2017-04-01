@@ -109,6 +109,10 @@
 #include <plat/fb-s5p.h>
 #endif
 
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+#include <linux/gp2a.h>
+#endif
+
 #if defined(CONFIG_VIDEO_SAMSUNG_S5P_MFC) || defined(CONFIG_VIDEO_MFC5X)
 #include <plat/s5p-mfc.h>
 #endif
@@ -120,6 +124,9 @@
 #ifdef CONFIG_VIDEO_M5MO
 #include <media/m5mo_platform.h>
 #endif
+#ifdef CONFIG_VIDEO_SR200PC20
+#include <media/sr200pc20_platform.h>
+#endif
 #ifdef CONFIG_VIDEO_S5K5BAFX
 #include <media/s5k5bafx_platform.h>
 #endif
@@ -130,6 +137,15 @@
 #if defined(CONFIG_EXYNOS4_SETUP_THERMAL)
 #include <plat/s5p-tmu.h>
 #include <mach/regs-tmu.h>
+#endif
+
+
+#ifdef CONFIG_TOUCHSCREEN_MELFAS
+#include <linux/melfas_ts.h>
+#endif
+
+#ifdef CONFIG_SMB328_CHARGER
+static void smb328_set_charger_name (void);
 #endif
 
 #ifdef CONFIG_SEC_DEV_JACK
@@ -190,6 +206,10 @@
 #include <linux/host_notify.h>
 #endif
 
+#ifdef CONFIG_MACH_C1_KDDI_REV00
+#include <linux/wimax/samsung/wimax732.h>
+#endif
+
 #ifdef CONFIG_EPEN_WACOM_G5SP
 #include <linux/wacom_i2c.h>
 static struct wacom_g5_callbacks *wacom_callbacks;
@@ -212,7 +232,7 @@ static struct wacom_g5_callbacks *wacom_callbacks;
 #include <linux/phone_svn/ipc_spi.h>
 #include <linux/irq.h>
 #endif
-#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
+#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC) || defined(CONFIG_MACH_C1_KDDI_REV00)
 #include "../../../drivers/usb/gadget/s3c_udc.h"
 #endif
 
@@ -350,11 +370,13 @@ static int m5mo_power_on(void)
 		printk(KERN_ERR "faile to request gpio(ISP_RESET)\n");
 		return ret;
 	}
+#ifdef CONFIG_8M_AF_EN
 	ret = gpio_request(GPIO_8M_AF_EN, "GPK1");
 	if (ret) {
 		printk(KERN_ERR "fail to request gpio(8M_AF_EN)\n");
 		return ret;
 	}
+#endif
 
 	/* CAM_VT_nSTBY low */
 	ret = gpio_direction_output(GPIO_CAM_VGA_nSTBY, 0);
@@ -378,7 +400,7 @@ static int m5mo_power_on(void)
 	ret = gpio_direction_output(GPIO_CAM_SENSOR_CORE, 1);
 	CAM_CHECK_ERR_RET(ret, "output senser_core");
 
-#if defined(CONFIG_MACH_Q1_BD)
+#if defined(CONFIG_MACH_Q1_BD) || defined(CONFIG_MACH_C1_KDDI_REV00)
 	udelay(120);
 #else
 	udelay(10);
@@ -398,13 +420,23 @@ static int m5mo_power_on(void)
 	CAM_CHECK_ERR_RET(ret, "output VT_CAM_1.5V");
 	udelay(20);
 
-#if defined(CONFIG_MACH_Q1_BD)
+#if defined(CONFIG_MACH_Q1_BD) || defined(CONFIG_MACH_C1_KDDI_REV00)
 	udelay(120);
 #endif
 
 	/* CAM_AF_2.8V */
+#ifdef CONFIG_8M_AF_EN
+	/* 8M_AF_2.8V_EN */
 	ret = gpio_direction_output(GPIO_8M_AF_EN, 1);
 	CAM_CHECK_ERR(ret, "output AF");
+#else
+	regulator = regulator_get(NULL, "cam_af");
+	if (IS_ERR(regulator))
+		return -ENODEV;
+	ret = regulator_enable(regulator);
+	regulator_put(regulator);
+	CAM_CHECK_ERR(ret, "output cam_af");
+#endif
 	mdelay(7);
 
 	/* VT_CAM_1.8V */
@@ -451,7 +483,9 @@ static int m5mo_power_on(void)
 	gpio_free(GPIO_CAM_IO_EN);
 	gpio_free(GPIO_VT_CAM_15V);
 	gpio_free(GPIO_ISP_RESET);
+#ifdef CONFIG_8M_AF_EN
 	gpio_free(GPIO_8M_AF_EN);
+#endif
 	printk(KERN_DEBUG "%s: out\n", __func__);
 
 	return ret;
@@ -628,11 +662,13 @@ static int m5mo_power_down(void)
 
 	printk(KERN_DEBUG "%s: in\n", __func__);
 
+#ifdef CONFIG_8M_AF_EN
 	ret = gpio_request(GPIO_8M_AF_EN, "GPK1");
 	if (ret) {
 		printk(KERN_ERR "fail to request gpio(8M_AF_EN)\n");
 		return ret;
 	}
+#endif
 	ret = gpio_request(GPIO_ISP_RESET, "ISP_RESET");
 	if (ret) {
 		printk(KERN_ERR "faile to request gpio(ISP_RESET)\n");
@@ -674,9 +710,19 @@ static int m5mo_power_down(void)
 	udelay(20);
 
 	/* CAM_AF_2.8V */
+#ifdef CONFIG_8M_AF_EN
 	/* 8M_AF_2.8V_EN */
 	ret = gpio_direction_output(GPIO_8M_AF_EN, 0);
 	CAM_CHECK_ERR(ret, "output AF");
+#else
+	regulator = regulator_get(NULL, "cam_af");
+	if (IS_ERR(regulator))
+		return -ENODEV;
+	if (regulator_is_enabled(regulator))
+		ret = regulator_force_disable(regulator);
+	regulator_put(regulator);
+	CAM_CHECK_ERR(ret, "disable cam_af");
+#endif
 
 	/* CAM_SENSOR_IO_1.8V */
 	regulator = regulator_get(NULL, "cam_sensor_io");
@@ -732,11 +778,13 @@ static int m5mo_power_down(void)
 	regulator_put(regulator);
 	CAM_CHECK_ERR(ret, "disable isp_core");
 
-#if defined(CONFIG_MACH_Q1_BD)
+#if defined(CONFIG_MACH_Q1_BD) || defined(CONFIG_MACH_C1_KDDI_REV00)
 	mdelay(250);
 #endif
-
+	
+#ifdef CONFIG_8M_AF_EN
 	gpio_free(GPIO_8M_AF_EN);
+#endif
 	gpio_free(GPIO_ISP_RESET);
 	gpio_free(GPIO_CAM_IO_EN);
 	gpio_free(GPIO_CAM_SENSOR_CORE);
@@ -823,12 +871,336 @@ static int m5mo_flash_power(int enable)
 		if (regulator_is_enabled(movie))
 			regulator_disable(movie);
 	}
-torch_exit:
+//torch_exit:
 	regulator_put(flash);
 	regulator_put(movie);
 
 	return 0;
 }
+
+#if defined(CONFIG_VIDEO_SR130PC10) || defined(CONFIG_VIDEO_SR200PC20)
+static int m5mo_power_on_sr130(void)
+{
+	struct regulator *regulator;
+	int ret = 0;
+
+	printk(KERN_DEBUG "%s: in\n", __func__);
+
+	ret = gpio_request(GPIO_CAM_VGA_nSTBY, "GPL2");
+	if (ret) {
+		printk(KERN_ERR "faile to request gpio(GPIO_CAM_VGA_nSTBY)\n");
+		return ret;
+	}
+	ret = gpio_request(GPIO_CAM_VGA_nRST, "GPL2");
+	if (ret) {
+		printk(KERN_ERR "faile to request gpio(GPIO_CAM_VGA_nRST)\n");
+		return ret;
+	}
+	ret = gpio_request(GPIO_CAM_SENSOR_CORE, "GPE2");
+	if (ret) {
+		printk(KERN_ERR "fail to request gpio(CAM_SENSOR_CORE)\n");
+		return ret;
+	}
+	ret = gpio_request(GPIO_CAM_IO_EN, "GPE2");
+	if (ret) {
+		printk(KERN_ERR "fail to request gpio(CAM_IO_EN)\n");
+		return ret;
+	}
+	ret = gpio_request(GPIO_VT_CAM_15V, "GPE2");
+	if (ret) {
+		printk(KERN_ERR "faile to request gpio(GPIO_VT_CAM_15V)\n");
+		return ret;
+	}
+	ret = gpio_request(GPIO_ISP_RESET, "GPY3");
+	if (ret) {
+		printk(KERN_ERR "faile to request gpio(ISP_RESET)\n");
+		return ret;
+	}
+#ifdef CONFIG_8M_AF_EN
+	ret = gpio_request(GPIO_8M_AF_EN, "GPK1");
+	if (ret) {
+		printk(KERN_ERR "fail to request gpio(8M_AF_EN)\n");
+		return ret;
+	}
+#endif
+
+	/* CAM_VT_nSTBY low */
+	ret = gpio_direction_output(GPIO_CAM_VGA_nSTBY, 0);
+	CAM_CHECK_ERR_RET(ret, "output VGA_nSTBY");
+
+	/* CAM_VT_nRST	low */
+	ret =gpio_direction_output(GPIO_CAM_VGA_nRST, 0);
+	CAM_CHECK_ERR_RET(ret, "output VGA_nRST");
+	udelay(10);
+
+	/* CAM_ISP_CORE_1.2V */
+	regulator = regulator_get(NULL, "cam_isp_core");
+	if (IS_ERR(regulator))
+		return -ENODEV;
+	ret = regulator_enable(regulator);
+	regulator_put(regulator);
+	CAM_CHECK_ERR_RET(ret, "enable cam_isp_core");
+	udelay(1);
+
+	/* CAM_SENSOR_CORE_1.2V */
+	ret = gpio_direction_output(GPIO_CAM_SENSOR_CORE, 1);
+	CAM_CHECK_ERR_RET(ret, "output senser_core");
+	udelay(1);
+
+	/* CAM_AF_2.8V */
+#ifdef CONFIG_8M_AF_EN
+	/* 8M_AF_2.8V_EN */
+	ret = gpio_direction_output(GPIO_8M_AF_EN, 1);
+	CAM_CHECK_ERR(ret, "output AF");
+#else
+	regulator = regulator_get(NULL, "cam_af");
+	if (IS_ERR(regulator))
+		return -ENODEV;
+	ret = regulator_enable(regulator);
+	regulator_put(regulator);
+	CAM_CHECK_ERR(ret, "output cam_af");
+#endif
+	mdelay(7);
+
+	/* CAM_SENSOR_A2.8V */
+	ret = gpio_direction_output(GPIO_CAM_IO_EN, 1);
+	CAM_CHECK_ERR_RET(ret, "output IO_EN");
+	/* it takes about 100us at least during level transition.*/
+	udelay(1);
+
+	/* VT_CORE_1.5V */
+	ret = gpio_direction_output(GPIO_VT_CAM_15V, 1);
+#ifdef CONFIG_TARGET_LOCALE_NA
+	s3c_gpio_setpull(GPIO_VT_CAM_15V, S3C_GPIO_PULL_NONE);
+#endif /* CONFIG_TARGET_LOCALE_NA */
+	CAM_CHECK_ERR_RET(ret, "output VT_CAM_1.5V");
+	udelay(1);
+
+	/* VT_CAM_1.8V */
+	regulator = regulator_get(NULL, "vt_cam_1.8v");
+	if (IS_ERR(regulator))
+		return -ENODEV;
+	ret = regulator_enable(regulator);
+	regulator_put(regulator);
+	CAM_CHECK_ERR_RET(ret, "enable vt_1.8v");
+	udelay(1);
+
+	/* CAM_ISP_1.8V */
+	regulator = regulator_get(NULL, "cam_isp");
+	if (IS_ERR(regulator))
+		return -ENODEV;
+	ret = regulator_enable(regulator);
+	regulator_put(regulator);
+	CAM_CHECK_ERR_RET(ret, "enable cam_isp");
+	udelay(1); /* at least */
+
+	/* CAM_SENSOR_IO_1.8V */
+	regulator = regulator_get(NULL, "cam_sensor_io");
+	if (IS_ERR(regulator))
+		return -ENODEV;
+	ret = regulator_enable(regulator);
+	regulator_put(regulator);
+	CAM_CHECK_ERR_RET(ret, "enable sensor_io");
+	udelay(300);
+
+	/* CAM_VT_nSTBY high */
+	ret = gpio_direction_output(GPIO_CAM_VGA_nSTBY, 1);
+	CAM_CHECK_ERR_RET(ret, "output VGA_nSTBY");
+	udelay(10);
+
+	/* MCLK */
+	ret = s3c_gpio_cfgpin(GPIO_CAM_MCLK, S3C_GPIO_SFN(2));
+	CAM_CHECK_ERR_RET(ret, "cfg mclk");
+	s3c_gpio_setpull(GPIO_CAM_MCLK, S3C_GPIO_PULL_NONE);
+	mdelay(12);
+
+	/* CAM_VT_nRST	high */
+	ret =gpio_direction_output(GPIO_CAM_VGA_nRST, 1);
+	CAM_CHECK_ERR_RET(ret, "output VGA_nRST");
+	udelay(12);
+
+	/* CAM_VT_nSTBY low */
+	ret = gpio_direction_output(GPIO_CAM_VGA_nSTBY, 0);
+	CAM_CHECK_ERR_RET(ret, "output VGA_nSTBY");
+	udelay(10);
+
+	/* ISP_RESET */
+	ret = gpio_direction_output(GPIO_ISP_RESET, 1);
+	CAM_CHECK_ERR_RET(ret, "output reset");
+	mdelay(4);
+
+	gpio_free(GPIO_CAM_VGA_nSTBY);
+	gpio_free(GPIO_CAM_VGA_nRST);
+	gpio_free(GPIO_CAM_SENSOR_CORE);
+	gpio_free(GPIO_CAM_IO_EN);
+	gpio_free(GPIO_VT_CAM_15V);
+	gpio_free(GPIO_ISP_RESET);
+#ifdef CONFIG_8M_AF_EN
+	gpio_free(GPIO_8M_AF_EN);
+#endif
+
+	return ret;
+}
+
+static int m5mo_power_down_sr130(void)
+{
+	struct regulator *regulator;
+	int ret = 0;
+
+	printk(KERN_DEBUG "%s: in\n", __func__);
+
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+	ret = gpio_request(GPIO_CAM_VGA_nSTBY, "GPL2");
+	if (ret) {
+		printk(KERN_ERR "fail to request gpio(CAM_VGA_nSTBY)\n");
+		return ret;
+	}
+// raj: End To fix the Rear to front camera crash.
+#endif
+#ifdef CONFIG_8M_AF_EN
+	ret = gpio_request(GPIO_8M_AF_EN, "GPK1");
+	if (ret) {
+		printk(KERN_ERR "fail to request gpio(8M_AF_EN)\n");
+		return ret;
+	}
+#endif
+	ret = gpio_request(GPIO_ISP_RESET, "GPY3");
+	if (ret) {
+		printk(KERN_ERR "faile to request gpio(ISP_RESET)\n");
+		return ret;
+	}
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+	ret = gpio_request(GPIO_CAM_VGA_nRST, "GPL2");
+	if (ret) {
+		printk(KERN_ERR "fail to request gpio(VGA_nRST)\n");
+		return ret;
+	}
+// raj: End To fix the Rear to front camera crash.
+#endif
+	ret = gpio_request(GPIO_CAM_IO_EN, "GPE2");
+	if (ret) {
+		printk(KERN_ERR "fail to request gpio(GPIO_CAM_IO_EN)\n");
+		return ret;
+	}
+	ret = gpio_request(GPIO_CAM_SENSOR_CORE, "GPE2");
+	if (ret) {
+		printk(KERN_ERR "fail to request gpio(CAM_SENSOR_COR)\n");
+		return ret;
+	}
+	ret = gpio_request(GPIO_VT_CAM_15V, "GPE2");
+	if (ret) {
+		printk(KERN_ERR "faile to request gpio(GPIO_VT_CAM_15V)\n");
+		return ret;
+	}
+
+	/* s3c_i2c0_force_stop(); */
+
+	/* CAM_VT_nSTBY low */
+	ret = gpio_direction_output(GPIO_CAM_VGA_nSTBY, 0);
+	CAM_CHECK_ERR_RET(ret, "output VGA_nSTBY");
+
+	mdelay(3);
+
+	/* ISP_RESET */
+	ret = gpio_direction_output(GPIO_ISP_RESET, 0);
+	CAM_CHECK_ERR(ret, "output reset");
+	udelay(1);
+
+	/* CAM_VT_nRST	low */
+	ret =gpio_direction_output(GPIO_CAM_VGA_nRST, 0);
+	CAM_CHECK_ERR_RET(ret, "output VGA_nRST");
+	mdelay(2);
+
+	/* MCLK */
+	ret = s3c_gpio_cfgpin(GPIO_CAM_MCLK, S3C_GPIO_INPUT);
+	s3c_gpio_setpull(GPIO_CAM_MCLK, S3C_GPIO_PULL_DOWN);
+	CAM_CHECK_ERR(ret, "cfg mclk");
+	udelay(1);
+
+	/* CAM_AF_2.8V */
+#ifdef CONFIG_8M_AF_EN
+	/* 8M_AF_2.8V_EN */
+	ret = gpio_direction_output(GPIO_8M_AF_EN, 0);
+	CAM_CHECK_ERR(ret, "output AF");
+#else
+	regulator = regulator_get(NULL, "cam_af");
+	if (IS_ERR(regulator))
+		return -ENODEV;
+	if (regulator_is_enabled(regulator))
+		ret = regulator_force_disable(regulator);
+	regulator_put(regulator);
+	CAM_CHECK_ERR(ret, "disable cam_af");
+#endif
+	udelay(5);
+
+	/* CAM_SENSOR_IO_1.8V */
+	regulator = regulator_get(NULL, "cam_sensor_io");
+	if (IS_ERR(regulator))
+		return -ENODEV;
+	if (regulator_is_enabled(regulator))
+		ret = regulator_force_disable(regulator);
+	regulator_put(regulator);
+	CAM_CHECK_ERR(ret, "disable, sensor_io");
+	udelay(1);
+
+	/* CAM_ISP_1.8V */
+	regulator = regulator_get(NULL, "cam_isp");
+	if (IS_ERR(regulator))
+		return -ENODEV;
+	if (regulator_is_enabled(regulator))
+		ret = regulator_force_disable(regulator);
+	regulator_put(regulator);
+	CAM_CHECK_ERR(ret, "disable cam_isp");
+	udelay(1); /* 100us -> 500us */
+
+	/* VT_CAM_1.8V */
+	regulator = regulator_get(NULL, "vt_cam_1.8v");
+	if (IS_ERR(regulator))
+		return -ENODEV;
+	if (regulator_is_enabled(regulator))
+		ret = regulator_disable(regulator);
+	regulator_put(regulator);
+	CAM_CHECK_ERR(ret, "disable vt_1.8v");
+	udelay(1); /* 10us -> 250us */
+
+	/* VT_CORE_1.5V */
+	ret = gpio_direction_output(GPIO_VT_CAM_15V, 0);
+	CAM_CHECK_ERR(ret, "output VT_CAM_1.5V");
+	udelay(1); /*10 -> 300 us */
+
+	/* CAM_SENSOR_A2.8V */
+	ret = gpio_direction_output(GPIO_CAM_IO_EN, 0);
+	CAM_CHECK_ERR(ret, "output IO_EN");
+	udelay(1);
+
+	/* CAM_SENSOR_CORE_1.2V */
+	ret = gpio_direction_output(GPIO_CAM_SENSOR_CORE, 0);
+	CAM_CHECK_ERR(ret, "output SENSOR_CORE");
+	udelay(5);
+
+	/* CAM_ISP_CORE_1.2V */
+	regulator = regulator_get(NULL, "cam_isp_core");
+	if (IS_ERR(regulator))
+		return -ENODEV;
+	if (regulator_is_enabled(regulator))
+		ret = regulator_force_disable(regulator);
+	regulator_put(regulator);
+	CAM_CHECK_ERR(ret, "disable isp_core");
+
+	gpio_free(GPIO_CAM_VGA_nSTBY);
+	gpio_free(GPIO_CAM_VGA_nRST);
+#ifdef CONFIG_8M_AF_EN
+	gpio_free(GPIO_8M_AF_EN);
+#endif
+	gpio_free(GPIO_ISP_RESET);
+	gpio_free(GPIO_CAM_IO_EN);
+	gpio_free(GPIO_CAM_SENSOR_CORE);
+	gpio_free(GPIO_VT_CAM_15V);
+
+	return ret;
+}
+#endif
+
 
 static int m5mo_power(int enable)
 {
@@ -836,10 +1208,8 @@ static int m5mo_power(int enable)
 
 	printk(KERN_DEBUG "%s %s\n", __func__, enable ? "on" : "down");
 	if (enable) {
-#if defined(CONFIG_TARGET_LOCALE_NA)
-		exynos_cpufreq_lock(DVFS_LOCK_ID_CAM, 1);
-		ret = m5mo_power_on();
-		exynos_cpufreq_lock_free(DVFS_LOCK_ID_CAM);
+#if defined(CONFIG_VIDEO_SR130PC10) || defined(CONFIG_VIDEO_SR200PC20)
+		ret = m5mo_power_on_sr130();
 #else
 
 		ret = m5mo_power_on();
@@ -847,12 +1217,9 @@ static int m5mo_power(int enable)
 		if (unlikely(ret))
 			goto error_out;
 	} else {
-#if defined(CONFIG_TARGET_LOCALE_NA)
-		exynos_cpufreq_lock(DVFS_LOCK_ID_CAM, 1);
-		ret = m5mo_power_down();
-		exynos_cpufreq_lock_free(DVFS_LOCK_ID_CAM);
+#if defined(CONFIG_VIDEO_SR130PC10) || defined(CONFIG_VIDEO_SR200PC20)
+		ret = m5mo_power_down_sr130();
 #else
-
 		ret = m5mo_power_down();
 #endif
 	}
@@ -921,18 +1288,18 @@ static struct s3c_platform_camera m5mo = {
 };
 #endif				/* #ifdef CONFIG_VIDEO_M5MO */
 
-#ifdef CONFIG_VIDEO_S5K5BAFX
-static int s5k5bafx_get_i2c_busnum(void)
+#ifdef CONFIG_VIDEO_SR200PC20
+static int sr200pc20_get_i2c_busnum(void)
 {
 	return 12;
 }
 
-static int s5k5bafx_power_on(void)
+static int sr200pc20_power_on(void)
 {
 	struct regulator *regulator;
 	int ret = 0;
 
-	/* printk("%s: in\n", __func__); */
+	printk("%s: in\n", __func__);
 
 	ret = gpio_request(GPIO_ISP_RESET, "ISP_RESET");
 	if (ret) {
@@ -960,14 +1327,8 @@ static int s5k5bafx_power_on(void)
 		return ret;
 	}
 
-#ifndef CONFIG_MACH_U1_KOR_LGT
-	if (system_rev >= 9) {
-#endif
 		s3c_gpio_setpull(VT_CAM_SDA_18V, S3C_GPIO_PULL_NONE);
 		s3c_gpio_setpull(VT_CAM_SCL_18V, S3C_GPIO_PULL_NONE);
-#ifndef CONFIG_MACH_U1_KOR_LGT
-	}
-#endif
 
 	/* ISP_RESET low */
 	ret = gpio_direction_output(GPIO_ISP_RESET, 0);
@@ -978,30 +1339,23 @@ static int s5k5bafx_power_on(void)
 	regulator = regulator_get(NULL, "cam_isp_core");
 	if (IS_ERR(regulator))
 		return -ENODEV;
-	ret = regulator_enable(regulator);
+	ret = regulator_force_disable(regulator);
 	regulator_put(regulator);
 	CAM_CHECK_ERR_RET(ret, "enable isp_core");
-	udelay(10);
-
-	/* CAM_SENSOR_A2.8V */
-	ret = gpio_direction_output(GPIO_CAM_IO_EN, 1);
-	CAM_CHECK_ERR_RET(ret, "output io_en");
-	udelay(300);		/* don't change me */
-
-	/* VT_CORE_1.5V */
-	ret = gpio_direction_output(GPIO_VT_CAM_15V, 1);
-	CAM_CHECK_ERR_RET(ret, "output vt_15v");
-	udelay(100);
 
 	/* CAM_ISP_1.8V */
 	regulator = regulator_get(NULL, "cam_isp");
 	if (IS_ERR(regulator))
 		return -ENODEV;
-	ret = regulator_enable(regulator);
+	ret = regulator_force_disable(regulator);
 	regulator_put(regulator);
 	CAM_CHECK_ERR_RET(ret, "enable cam_isp");
 	udelay(10);
 
+	//ssong110802. the below power up sequence should be figured out properly and must be changed later!
+	mdelay(100);
+
+	//VDD-IO
 	/* VT_CAM_1.8V */
 	regulator = regulator_get(NULL, "vt_cam_1.8v");
 	if (IS_ERR(regulator))
@@ -1009,23 +1363,39 @@ static int s5k5bafx_power_on(void)
 	ret = regulator_enable(regulator);
 	regulator_put(regulator);
 	CAM_CHECK_ERR_RET(ret, "enable vt_1.8v");
-	udelay(10);
+ 
+	//VDD-Analog
+	/* CAM_SENSOR_A2.8V */
+	ret = gpio_direction_output(GPIO_CAM_IO_EN, 1);
+	CAM_CHECK_ERR_RET(ret, "output io_en");
+ 
+	//VDD-Digital
+	ret = gpio_direction_output(GPIO_VT_CAM_15V, 1);
+	CAM_CHECK_ERR_RET(ret, "output vt_15v");
 
 	/* CAM_VGA_nSTBY */
-	ret = gpio_direction_output(GPIO_CAM_VGA_nSTBY, 1);
+	ret = gpio_direction_output(GPIO_CAM_VGA_nSTBY, 0);
 	CAM_CHECK_ERR_RET(ret, "output VGA_nSTBY");
-	udelay(50);
+
+	mdelay(100);
 
 	/* Mclk */
 	ret = s3c_gpio_cfgpin(GPIO_CAM_MCLK, S3C_GPIO_SFN(2));
 	s3c_gpio_setpull(GPIO_CAM_MCLK, S3C_GPIO_PULL_NONE);
 	CAM_CHECK_ERR_RET(ret, "cfg mclk");
-	udelay(100);
+
+	mdelay(100);
 
 	/* CAM_VGA_nRST	 */
+	ret = gpio_direction_output(GPIO_CAM_VGA_nRST, 0);
+	CAM_CHECK_ERR_RET(ret, "output VGA_nRST");
+
+	mdelay(100);
+
 	ret = gpio_direction_output(GPIO_CAM_VGA_nRST, 1);
 	CAM_CHECK_ERR_RET(ret, "output VGA_nRST");
-	mdelay(2);
+
+	mdelay(100);
 
 	gpio_free(GPIO_ISP_RESET);
 	gpio_free(GPIO_CAM_IO_EN);
@@ -1036,12 +1406,12 @@ static int s5k5bafx_power_on(void)
 	return 0;
 }
 
-static int s5k5bafx_power_off(void)
+static int sr200pc20_power_off(void)
 {
 	struct regulator *regulator;
 	int ret = 0;
 
-	/* printk("n%s: in\n", __func__); */
+	printk("n%s: in\n", __func__);
 
 	ret = gpio_request(GPIO_CAM_VGA_nRST, "GPL2");
 	if (ret) {
@@ -1064,10 +1434,12 @@ static int s5k5bafx_power_off(void)
 		return ret;
 	}
 
+	mdelay(2);
+
 	/* CAM_VGA_nRST	 */
 	ret = gpio_direction_output(GPIO_CAM_VGA_nRST, 0);
 	CAM_CHECK_ERR(ret, "output VGA_nRST");
-	udelay(100);
+	mdelay(2);
 
 	/* Mclk */
 	ret = s3c_gpio_cfgpin(GPIO_CAM_MCLK, S3C_GPIO_INPUT);
@@ -1076,7 +1448,7 @@ static int s5k5bafx_power_off(void)
 	udelay(20);
 
 	/* CAM_VGA_nSTBY */
-	ret = gpio_direction_output(GPIO_CAM_VGA_nSTBY, 0);
+	ret = gpio_direction_output(GPIO_CAM_VGA_nSTBY, 1);
 	CAM_CHECK_ERR(ret, "output VGA_nSTBY");
 	udelay(20);
 
@@ -1119,20 +1491,10 @@ static int s5k5bafx_power_off(void)
 	regulator_put(regulator);
 	CAM_CHECK_ERR(ret, "disable isp_core");
 
-#ifndef CONFIG_MACH_U1_KOR_LGT
-	if (system_rev >= 9) {
-#endif
 		gpio_direction_input(VT_CAM_SDA_18V);
 		s3c_gpio_setpull(VT_CAM_SDA_18V, S3C_GPIO_PULL_DOWN);
 		gpio_direction_input(VT_CAM_SCL_18V);
 		s3c_gpio_setpull(VT_CAM_SCL_18V, S3C_GPIO_PULL_DOWN);
-#ifndef CONFIG_MACH_U1_KOR_LGT
-	}
-#endif
-
-#if defined(CONFIG_MACH_Q1_BD)
-	mdelay(350);
-#endif
 
 	gpio_free(GPIO_CAM_VGA_nRST);
 	gpio_free(GPIO_CAM_VGA_nSTBY);
@@ -1142,33 +1504,17 @@ static int s5k5bafx_power_off(void)
 	return 0;
 }
 
-static int s5k5bafx_power(int onoff)
+static int sr200pc20_power(int onoff)
 {
 	int ret = 0;
-#if defined(CONFIG_MACH_U1_KOR_LGT)
-	u32 cfg = 0;
-#endif
+
 	printk(KERN_INFO "%s(): %s\n", __func__, onoff ? "on" : "down");
-
-#if defined(CONFIG_MACH_U1_KOR_LGT)
-	cfg = readl(S5P_VA_GPIO2 + 0x002c);
-#endif
-
 	if (onoff) {
-
-#if defined(CONFIG_MACH_U1_KOR_LGT)
-		writel(cfg | 0x0080, S5P_VA_GPIO2 + 0x002c);
-#endif
-
-		ret = s5k5bafx_power_on();
+		ret = sr200pc20_power_on();
 		if (unlikely(ret))
 			goto error_out;
 	} else {
-
-#if defined(CONFIG_MACH_U1_KOR_LGT)
-		writel(cfg & 0xff3f, S5P_VA_GPIO2 + 0x002c);
-#endif
-		ret = s5k5bafx_power_off();
+		ret = sr200pc20_power_off();
 		/* s3c_i2c0_force_stop(); *//* DSLIM. Should be implemented */
 	}
 
@@ -1178,55 +1524,48 @@ error_out:
 	return ret;
 }
 
-static struct s5k5bafx_platform_data s5k5bafx_plat = {
-	.default_width = 640,
-	.default_height = 480,
-	.pixelformat = V4L2_PIX_FMT_UYVY,
+static struct sr200pc20_platform_data sr200pc20_plat = {
+	.default_width = 800,
+	.default_height = 600,
+	.pixelformat = V4L2_PIX_FMT_YUYV,
 	.freq = 24000000,
-	.is_mipi = 1,
-	.streamoff_delay = S5K5BAFX_STREAMOFF_DELAY,
-	.init_streamoff = true,
-	.dbg_level = CAMDBG_LEVEL_DEFAULT,
+	.is_mipi = 0,
 };
 
-static struct i2c_board_info s5k5bafx_i2c_info = {
-	I2C_BOARD_INFO("S5K5BAFX", 0x5A >> 1),
-	.platform_data = &s5k5bafx_plat,
+static struct i2c_board_info  sr200pc20_i2c_info = {
+	I2C_BOARD_INFO("SR200PC20", 0x40 >> 1),
+	.platform_data = &sr200pc20_plat,
 };
 
-static struct s3c_platform_camera s5k5bafx = {
-	.id = CAMERA_CSI_D,
-	.type = CAM_TYPE_MIPI,
+static struct s3c_platform_camera sr200pc20 = {
+	.id		= CAMERA_PAR_A,
+	.type		= CAM_TYPE_ITU,
 	.fmt = ITU_601_YCBCR422_8BIT,
-	.order422 = CAM_ORDER422_8BIT_CBYCRY,
-	.mipi_lanes = 1,
-	.mipi_settle = 6,
-	.mipi_align = 32,
-
-	.get_i2c_busnum = s5k5bafx_get_i2c_busnum,
-	.info = &s5k5bafx_i2c_info,
-	.pixelformat = V4L2_PIX_FMT_UYVY,
+	.order422	= CAM_ORDER422_8BIT_YCBYCR,
+	.get_i2c_busnum	= sr200pc20_get_i2c_busnum,
+	.info		= &sr200pc20_i2c_info,
+	.pixelformat	= V4L2_PIX_FMT_YUYV,
 	.srclk_name = "xusbxti",
 	.clk_name = "sclk_cam0",
 	.clk_rate = 24000000,
-	.line_length = 640,
-	.width = 640,
-	.height = 480,
+	.line_length	= 600,
+	.width		= 800,
+	.height		= 600,
 	.window = {
 		.left = 0,
 		.top = 0,
-		.width = 640,
-		.height = 480,
+		.width	= 800,
+		.height	= 600,
 	},
 
 	/* Polarity */
-	.inv_pclk = 0,
+	.inv_pclk	= 1,
 	.inv_vsync = 1,
 	.inv_href = 0,
-	.inv_hsync = 0,
+	.inv_hsync	= 1,
 	.reset_camera = 0,
 	.initialized = 0,
-	.cam_power = s5k5bafx_power,
+	.cam_power	= sr200pc20_power,
 };
 #endif
 
@@ -1328,7 +1667,7 @@ static int s5k5bbgx_power_on(void)
 	/* CAM_VGA_nRST	 */
 	ret = gpio_direction_output(GPIO_CAM_VGA_nRST, 1);
 	CAM_CHECK_ERR_RET(ret, "output VGA_nRST");
-	udelay(100);
+	mdelay(2);
 
 	gpio_free(GPIO_ISP_RESET);
 	gpio_free(GPIO_CAM_IO_EN);
@@ -1606,18 +1945,48 @@ static struct s3c_platform_fimc fimc_plat = {
 #ifdef CONFIG_VIDEO_S5K5BAFX
 		&s5k5bafx,
 #endif
+
+#ifdef CONFIG_VIDEO_SR200PC20
+		&sr200pc20,
+#endif
 #ifdef WRITEBACK_ENABLED
 		&writeback,
 #endif
 	},
 	.hw_ver = 0x51,
-#if defined(CONFIG_VIDEO_S5K5BBGX)
+#if defined(CONFIG_VIDEO_S5K5BBGX) || defined(CONFIG_VIDEO_SR200PC20)
 	.cfg_gpio = s3c_fimc0_cfg_gpio,
 #else
 	.cfg_gpio = cam_cfg_gpio,
 #endif
+
 };
 #endif				/* CONFIG_VIDEO_FIMC */
+
+#ifdef CONFIG_TOUCHSCREEN_MELFAS
+extern void melfas_power_on(void)
+{
+	s3c_gpio_cfgpin(GPIO_TSP_LDO_ON, S3C_GPIO_OUTPUT);
+	s3c_gpio_setpull(GPIO_TSP_LDO_ON, S3C_GPIO_PULL_NONE);
+	gpio_set_value(GPIO_TSP_LDO_ON, GPIO_LEVEL_HIGH);
+	mdelay(40);
+	s3c_gpio_setpull(GPIO_TSP_INT, S3C_GPIO_PULL_NONE);
+	s3c_gpio_cfgpin(GPIO_TSP_INT, S3C_GPIO_SFN(0xf));
+	//mdelay(40);
+	printk(KERN_ERR"[SSONG] melfas_power_on() is called\n");
+}
+
+extern void melfas_power_off(void)
+{
+	s3c_gpio_cfgpin(GPIO_TSP_INT, S3C_GPIO_INPUT);
+	s3c_gpio_setpull(GPIO_TSP_INT, S3C_GPIO_PULL_DOWN);
+
+	s3c_gpio_cfgpin(GPIO_TSP_LDO_ON, S3C_GPIO_OUTPUT);
+	s3c_gpio_setpull(GPIO_TSP_LDO_ON, S3C_GPIO_PULL_NONE);
+	gpio_set_value(GPIO_TSP_LDO_ON, GPIO_LEVEL_LOW);
+	printk(KERN_ERR"[SSONG] melfas_power_off() is called\n");
+}
+#endif
 
 static DEFINE_MUTEX(notify_lock);
 
@@ -1642,7 +2011,7 @@ static int ext_cd_cleanup_hsmmc##num(void (*notify_func)( \
 	return 0; \
 }
 
-#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
+#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC) || defined(CONFIG_MACH_C1_KDDI_REV00)
 #ifdef CONFIG_S3C_DEV_HSMMC2
 	DEFINE_MMC_CARD_NOTIFIER(2)
 #endif
@@ -1661,7 +2030,7 @@ void mmc_force_presence_change(struct platform_device *pdev)
 {
 	void (*notify_func)(struct platform_device *, int state) = NULL;
 	mutex_lock(&notify_lock);
-#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
+#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC) || defined(CONFIG_MACH_C1_KDDI_REV00)
 #ifdef CONFIG_S3C_DEV_HSMMC2
 	if (pdev == &s3c_device_hsmmc2) {
 		printk(KERN_INFO "Test logs pdev : %p s3c_device_hsmmc2 %p\n",
@@ -1703,7 +2072,7 @@ static struct s3c_sdhci_platdata exynos4_hsmmc0_pdata __initdata = {
 
 #ifdef CONFIG_S3C_DEV_HSMMC2
 static struct s3c_sdhci_platdata exynos4_hsmmc2_pdata __initdata = {
-#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
+#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC) || defined(CONFIG_MACH_C1_KDDI_REV00)
 	.cd_type = S3C_SDHCI_CD_EXTERNAL,
 #else
 	.cd_type = S3C_SDHCI_CD_GPIO,
@@ -1712,7 +2081,7 @@ static struct s3c_sdhci_platdata exynos4_hsmmc2_pdata __initdata = {
 	.ext_cd_gpio_invert = 1,
 #endif
 	.clk_type = S3C_SDHCI_CLK_DIV_EXTERNAL,
-#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
+#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC) || defined(CONFIG_MACH_C1_KDDI_REV00)
 /* For Wi-Fi */
 	.ext_cd_init = ext_cd_init_hsmmc2,
 	.ext_cd_cleanup = ext_cd_cleanup_hsmmc2,
@@ -2541,7 +2910,7 @@ static void __init ld9040_fb_init(void)
 
 	lcdtype = max(ld9040_lcdtype, lcdtype);
 
-#if !defined(CONFIG_PANEL_U1_NA_SPR) && !defined(CONFIG_MACH_U1_NA_USCC)
+#if !defined(CONFIG_PANEL_U1_NA_SPR) && !defined(CONFIG_MACH_U1_NA_USCC) && !defined(CONFIG_MACH_C1_KDDI_REV00)
 	if (lcdtype == LCDTYPE_SM2_A2)
 		ld9040_platform_data.pdata = &u1_panel_data_a2;
 	else if (lcdtype == LCDTYPE_M2)
@@ -3068,7 +3437,7 @@ REGULATOR_INIT(ldo11, "TOUCH_2.8V", 2800000, 2800000, 0,
 		REGULATOR_CHANGE_STATUS, 1);
 REGULATOR_INIT(ldo12, "VT_CAM_1.8V", 1800000, 1800000, 0,
 		REGULATOR_CHANGE_STATUS, 1);
-#if defined(CONFIG_MACH_Q1_BD)
+#if defined(CONFIG_MACH_Q1_BD) || defined(CONFIG_MACH_C1_KDDI_REV00)
 REGULATOR_INIT(ldo13, "VCC_3.0V_LCD", 3100000, 3100000, 1,
 		REGULATOR_CHANGE_STATUS, 1);
 #else
@@ -3088,7 +3457,7 @@ REGULATOR_INIT(ldo16, "CAM_SENSOR_IO_1.8V", 1800000, 1800000, 0,
 		REGULATOR_CHANGE_STATUS, 1);
 REGULATOR_INIT(ldo17, "VTF_2.8V", 2800000, 2800000, 0,
 		REGULATOR_CHANGE_STATUS, 1);
-#if defined(CONFIG_MACH_Q1_BD)
+#if defined(CONFIG_MACH_Q1_BD) || defined(CONFIG_MACH_C1_KDDI_REV00)
 REGULATOR_INIT(ldo18, "TOUCH_LED_3.3V", 3300000, 3300000, 0,
 		REGULATOR_CHANGE_STATUS, 1);
 #else
@@ -3673,7 +4042,7 @@ static void max8997_muic_usb_cb(u8 usb_mode)
 	} else
 		pr_info("otg error s3c_udc is null.\n");
 }
-#elif defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC)
+#elif defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_U1_NA_USCC) || defined(CONFIG_MACH_C1_KDDI_REV00)
 static void max8997_muic_usb_cb(u8 usb_mode)
 {
 	struct s3c_udc *udc_dev = platform_get_drvdata(&s3c_device_usbgadget);
@@ -3810,10 +4179,11 @@ static struct max8997_muic_data max8997_muic = {
 #else
 	.host_notify_cb = NULL,
 #endif
-#if !defined(CONFIG_MACH_U1_NA_USCC)
+#if defined(CONFIG_TARGET_LOCALE_NA)
 	.gpio_uart_sel =  GPIO_UART_SEL,
-#endif
+#else
 	.gpio_usb_sel = GPIO_USB_SEL,
+#endif
 };
 
 static struct max8997_buck1_dvs_funcs *buck1_dvs_funcs;
@@ -4607,7 +4977,7 @@ static struct sec_bat_adc_table_data temper_table_ADC7[] =  {
 };
 #endif
 /* temperature table for ADC 7 */
-#ifdef CONFIG_TARGET_LOCALE_NA
+#if defined(CONFIG_TARGET_LOCALE_NA) && !defined(CONFIG_MACH_C1_KDDI_REV00)
 static struct sec_bat_adc_table_data  temper_table_ADC7[] =  {
 	{  145,  670 },
 	{  165,  660 },
@@ -4692,7 +5062,91 @@ static struct sec_bat_adc_table_data  temper_table_ADC7[] =  {
 	{ 1675,  -130 },
 	{ 1685,  -140 },
 };
-
+#elif defined(CONFIG_MACH_C1_KDDI_REV00)
+static struct sec_bat_adc_table_data  temper_table_ADC7[] =  {
+	{  234,  670 },
+	{  254,  660 },
+	{  274,  650 },
+	{  286,  640 },
+	{  298,  630 },
+	{  310,  620 },
+	{  322,  610 },
+	{  336,  600 },
+	{  346,  590 },
+	{  357,  580 },
+	{  365,  570 },
+	{  378,  560 },
+	{  390,  550 },
+	{  402,  540 },
+	{  420,  530 },
+	{  435,  520 },
+	{  455,  510 },
+	{  475,  500 },
+	{  495,  490 },
+	{  515,  480 },
+	{  530,  470 },
+	{  545,  460 },
+	{  557,  450 },
+	{  558,  440 },
+	{  559,  430 },
+	{  590,  420 },
+	{  610,  410 },
+	{  646,  400 },
+	{  647,  390 },
+	{  648,  380 },
+	{  655,  370 },
+	{  677,  360 },
+	{  700,  350 },
+	{  717,  340 },
+	{  733,  330 },
+	{  748,  320 },
+	{  762,  310 },
+	{  775,  300 },
+	{  797,  290 },
+	{  820,  280 },
+	{  844,  270 },
+	{  869,  260 },
+	{  895,  250 },
+	{  922,  240 },
+	{  948,  230 },
+	{  973,  220 },
+	{  997,  210 },
+	{ 1020,  200 },
+	{ 1043,  190 },
+	{ 1066,  180 },
+	{ 1089,  170 },
+	{ 1112,  160 },
+	{ 1135,  150 },
+	{ 1158,  140 },
+	{ 1181,  130 },
+	{ 1204,  120 },
+	{ 1227,  110 },
+	{ 1250,  100 },
+	{ 1275,   90 },
+	{ 1305,   80 },
+	{ 1340,   70 },
+	{ 1370,   60 },
+	{ 1400,   50 },
+	{ 1430,   40 },
+	{ 1460,   30 },
+	{ 1480,   20 },
+	{ 1500,   10 },
+	{ 1525,    0 },
+	{ 1540,  -10 },
+	{ 1560,  -20 },
+	{ 1580,  -30 },
+	{ 1600,  -40 },
+	{ 1625,  -50 },
+	{ 1640,  -60 },
+	{ 1655,  -70 },
+	{ 1670,  -80 },
+	{ 1680,  -90 },
+	{ 1690,  -100 },
+	{ 1700,  -110 },
+	{ 1710,  -120 },
+	{ 1720,  -130 },
+	{ 1730,  -140 },
+};
 #else
 /* temperature table for ADC 7 */
 static struct sec_bat_adc_table_data temper_table_ADC7[] = {
@@ -4803,6 +5257,55 @@ static struct sec_bat_adc_table_data temper_table_ADC7[] = {
 #define ADC_CH_TEMPERATURE_PMIC	6
 #define ADC_CH_TEMPERATURE_LCD	7
 
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+static bool IsRegDisInLPM = false;
+int sec_disable_regulator(const char *reg_nm )
+{
+	struct regulator *regulator =  NULL;
+
+	if (reg_nm)
+		printk("%s:  Disabling Regulator -> %s\n", __func__, reg_nm);
+
+	regulator = regulator_get(NULL, reg_nm);
+	if (IS_ERR(regulator))
+      		  return 0;
+
+	if (regulator_is_enabled(regulator))  
+	{
+		printk("%s:  Forced Disable -> %s\n", __func__, reg_nm);
+       		regulator_force_disable(regulator);
+	}
+	regulator_put(regulator);
+
+	return 1;
+}
+
+
+int sec_isLpmMode(void)
+{
+	u32 val = __raw_readl(S5P_INFORM2);
+
+	pr_err("%s: LP charging:%d\n", __func__, val);
+
+	if (val && IsRegDisInLPM == false)
+	{
+		sec_disable_regulator("vdd_g3d");
+		sec_disable_regulator("vdd_arm");
+		sec_disable_regulator("vdd_int");
+		sec_disable_regulator("vhsic");
+#if 0 // 03-Apr-2012, rajesh -- need to enable this.
+#ifdef CONFIG_S5PV310_HI_ARMCLK_THAN_1_2GHZ
+		s5pv310_cpufreq_lock(DVFS_LOCK_ID_PEN, CPU_L5);
+		mdelay(1);
+#endif
+#endif
+		IsRegDisInLPM = true;
+	}
+	return val;
+}
+#endif
+
+
 static unsigned int sec_bat_get_lpcharging_state(void)
 {
 	u32 val = __raw_readl(S5P_INFORM2);
@@ -4898,7 +5401,7 @@ static struct smb328_platform_data smb328_pdata = {
 };
 #endif /* CONFIG_SMB328_CHARGER */
 
-#if defined(CONFIG_SMB136_CHARGER_Q1) || defined(CONFIG_SMB328_CHARGER)
+#if defined(CONFIG_SMB136_CHARGER_Q1) || (defined(CONFIG_SMB328_CHARGER) && !defined(CONFIG_MACH_C1_KDDI_REV00))
 static struct i2c_gpio_platform_data gpio_i2c_data19 = {
 	.sda_pin = GPIO_CHG_SDA,
 	.scl_pin = GPIO_CHG_SCL,
@@ -5213,13 +5716,14 @@ struct gpio_keys_button u1_buttons[] = {
 		.isr_hook = sec_debug_check_crash_key,
 		.debounce_interval = 10,
 	},			/* power key */
-#if !defined(CONFIG_MACH_U1_NA_SPR) && !defined(CONFIG_MACH_U1_NA_USCC) && !defined(CONFIG_TARGET_LOCALE_NAATT_TEMP)
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
 	{
 		.code = KEY_HOME,
 		.gpio = GPIO_OK_KEY,
 		.active_low = 1,
 		.type = EV_KEY,
 		.wakeup = 1,
+		.isr_hook = sec_debug_check_crash_key,
 		.debounce_interval = 10,
 	},			/* ok key */
 #endif
@@ -6331,6 +6835,19 @@ static struct i2c_board_info i2c_devs2[] __initdata = {
 #endif
 #ifdef CONFIG_S3C_DEV_I2C3
 /* I2C3 */
+
+#if defined (CONFIG_TOUCHSCREEN_MELFAS)
+static struct melfas_version tsp_version = {
+        .core                   = 0x66,
+        .private                = 0x09,
+        .public                 = 0x14,
+};
+
+static struct melfas_tsi_platform_data melfas_pdata = {
+        .version                                = &tsp_version
+};
+#endif
+
 static struct i2c_board_info i2c_devs3[] __initdata = {
 #ifdef CONFIG_TOUCHSCREEN_ATMEL_MXT224_U1
 	{
@@ -6350,6 +6867,13 @@ static struct i2c_board_info i2c_devs3[] __initdata = {
 		.platform_data = &mxt224_data,
 	},
 #endif
+#ifdef CONFIG_TOUCHSCREEN_MELFAS
+        {
+                        I2C_BOARD_INFO(MELFAS_TS_NAME, 0x48),
+                        .irq = IRQ_EINT(4),
+                        .platform_data = &melfas_pdata,
+        },
+#endif
 };
 #endif
 #ifdef CONFIG_S3C_DEV_I2C4
@@ -6363,6 +6887,27 @@ static struct i2c_board_info i2c_devs4[] __initdata = {
 #endif /* CONFIG_WIMAX_CMC */
 };
 #endif
+
+#if defined(CONFIG_WIMAX_CMC)
+static struct i2c_gpio_platform_data wmxeeprom_i2c_gpio_data = {
+	.sda_pin  = GPIO_CMC_SDA_18V,
+	.scl_pin  = GPIO_CMC_SCL_18V,
+	.udelay = 2,
+};
+static struct platform_device wmxeeprom_i2c_gpio_device = {
+	.name	= "i2c-gpio",
+	.id	= 18,
+	.dev	= {
+		.platform_data  = &wmxeeprom_i2c_gpio_data,
+	},
+};
+static struct i2c_board_info wmxeeprom_i2c_devices[] __initdata = {
+{
+	I2C_BOARD_INFO("wmxeeprom", 0x50),
+}
+};
+
+#endif /* CONFIG_WIMAX_CMC */
 
 #ifdef CONFIG_S3C_DEV_I2C5
 /* I2C5 */
@@ -6448,6 +6993,14 @@ struct platform_device s3c_device_i2c8 = {
 };
 
 /* I2C8 */
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+static struct i2c_board_info i2c_devs8_emul[] __initdata = {
+	{
+		I2C_BOARD_INFO("sec_touchkey", 0x20),
+		.platform_data = &touchkey_pdata,	
+	},
+};
+#else
 static struct i2c_board_info i2c_devs8_emul[] = {
 #if defined(CONFIG_KEYBOARD_CYPRESS_TOUCH) || defined(CONFIG_KEYBOARD_CYPRESS_TOUCH_BLN)
 	{
@@ -6456,6 +7009,7 @@ static struct i2c_board_info i2c_devs8_emul[] = {
 	},
 #endif
 };
+#endif
 #endif
 
 #ifdef CONFIG_S3C_DEV_I2C9_EMUL
@@ -6571,6 +7125,12 @@ static struct i2c_board_info i2c_devs9_emul[] __initdata = {
 		I2C_BOARD_INFO("max17040", 0x36),
 	},
 #endif
+#ifdef CONFIG_SMB328_CHARGER
+	{
+		I2C_BOARD_INFO("smb328-charger", SMB328_SLAVE_ADDR>>1),
+		.platform_data	= &smb328_pdata,
+	},
+#endif
 };
 #endif
 
@@ -6680,7 +7240,7 @@ static struct pas2m110_platform_data pas2m110_pdata = {
 };
 #endif
 #endif
-#ifdef CONFIG_SENSORS_GP2A_ANALOG
+#if defined (CONFIG_SENSORS_GP2A_ANALOG) || defined (CONFIG_OPTICAL_GP2AP020)
 static int gp2a_power(bool on)
 {
 	struct regulator *regulator;
@@ -6710,7 +7270,13 @@ static struct gp2a_platform_data gp2a_pdata = {
 #endif
 
 static struct i2c_board_info i2c_devs11_emul[] __initdata = {
-#ifdef CONFIG_MACH_U1_BD
+#if defined(CONFIG_OPTICAL_GP2AP020)
+        {
+                I2C_BOARD_INFO("gp2a", (0x72 >> 1)),
+                .platform_data = &gp2a_pdata,
+        },
+#endif
+#if defined (CONFIG_MACH_U1_BD) && defined (CONFIG_SENSORS_CM3663)
 	{
 		I2C_BOARD_INFO("cm3663", 0x20),
 		.irq = GPIO_PS_ALS_INT,
@@ -6758,7 +7324,11 @@ static struct pn544_i2c_platform_data pn544_pdata = {
 static struct i2c_board_info i2c_devs14[] __initdata = {
 	{
 		I2C_BOARD_INFO("pn544", 0x2b),
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+		.irq = IRQ_EINT(27), 	//ssong110908. NFC pin setting. XEINT_27, GPX3[3]
+#else
 		.irq = IRQ_EINT(15),
+#endif
 		.platform_data = &pn544_pdata,
 	},
 };
@@ -6787,10 +7357,15 @@ void nfc_setup_gpio(void)
 
 	/* s3c_gpio_cfgpin(GPIO_NFC_IRQ, EINT_MODE); */
 	/* s3c_gpio_setpull(GPIO_NFC_IRQ, S3C_GPIO_PULL_DOWN); */
+//ssong110908. NFC pin setting.
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+	s3c_gpio_cfgpin(GPIO_NFC_IRQ, S3C_GPIO_SFN(0xF));
+	s3c_gpio_setpull(GPIO_NFC_IRQ, S3C_GPIO_PULL_NONE);
+#endif
 }
 #endif
 
-#if defined(CONFIG_VIDEO_S5K5BAFX) || defined(CONFIG_VIDEO_S5K5BBGX)
+#if defined(CONFIG_VIDEO_S5K5BAFX) || defined(CONFIG_VIDEO_S5K5BBGX) || defined(CONFIG_VIDEO_SR200PC20)
 static struct i2c_gpio_platform_data i2c12_platdata = {
 	.sda_pin = VT_CAM_SDA_18V,
 	.scl_pin = VT_CAM_SCL_18V,
@@ -6854,6 +7429,40 @@ struct platform_device s3c_device_i2c17 = {
 #endif /* CONFIG_S3C_DEV_I2C17_EMUL */
 
 #ifdef CONFIG_USBHUB_USB3803
+
+int usb3803_hw_config(void)
+{
+	int i;
+	int usb_gpio[] = {GPIO_USB_RESET_N, GPIO_USB_BYPASS_N, GPIO_USB_CLOCK_EN};
+
+	for (i = 0; i < 3; i++) {
+		s3c_gpio_cfgpin(usb_gpio[i], S3C_GPIO_OUTPUT);
+		s3c_gpio_setpull(usb_gpio[i], S3C_GPIO_PULL_NONE);
+		gpio_set_value(usb_gpio[i], S3C_GPIO_SETPIN_ZERO);
+		s5p_gpio_set_drvstr(usb_gpio[i], S5P_GPIO_DRVSTR_LV1); /* need to check drvstr 1 or 2 */
+	}
+	return 0;
+}
+
+int usb3803_reset_n(int val)
+{
+	gpio_set_value(GPIO_USB_RESET_N, !!val);
+	return 0;
+}
+
+int usb3803_bypass_n(int val)
+{
+	gpio_set_value(GPIO_USB_BYPASS_N, !!val);
+	return 0;
+}
+
+int usb3803_clock_en(int val)
+{
+	gpio_set_value(GPIO_USB_CLOCK_EN, !!val);
+	return 0;
+}
+
+
 struct usb3803_platform_data usb3803_pdata = {
 	.init_needed    =  1,
 	.es_ver         = 1,
@@ -6871,10 +7480,6 @@ static struct i2c_board_info i2c_devs17_emul[] __initdata = {
 	},
 };
 #endif /* CONFIG_USBHUB_USB3803 */
-
-
-
-
 
 #endif
 
@@ -6920,10 +7525,19 @@ static struct platform_device s3c_device_i2c17 = {
 /* for Geminus based on MIPI-DSI interface */
 static struct s3cfb_lcd s6e8aa0 = {
 	.name = "s6e8aa0",
+#if defined(CONFIG_MACH_C1_KDDI_REV00)
+       .width = 720,
+#else
 	.width = 800,
+#endif
 	.height = 1280,
+#if defined(CONFIG_MACH_C1_KDDI_REV00) 
+       .p_width = 58,
+       .p_height = 103,
+#else
 	.p_width = 64,
 	.p_height = 106,
+#endif
 	.bpp = 24,
 
 	.freq = 57,
@@ -7037,7 +7651,7 @@ static int lcd_power_on(void *ld, int enable)
 	}
 
 	if (enable) {
-#ifdef CONFIG_MACH_Q1_BD
+#if defined(CONFIG_MACH_Q1_BD) || defined(CONFIG_MACH_C1_KDDI_REV00)
 		if (system_rev < 8) {
 			regulator = regulator_get(NULL, "vlcd_2.2v");
 			if (IS_ERR(regulator))
@@ -7047,6 +7661,7 @@ static int lcd_power_on(void *ld, int enable)
 		} else
 			gpio_set_value(GPIO_LCD_EN, GPIO_LEVEL_HIGH);
 #endif
+		mdelay(5);
 		regulator = regulator_get(NULL, "vlcd_3.0v");
 		if (IS_ERR(regulator))
 			return 0;
@@ -7059,7 +7674,7 @@ static int lcd_power_on(void *ld, int enable)
 		if (regulator_is_enabled(regulator))
 			regulator_force_disable(regulator);
 		regulator_put(regulator);
-#ifdef CONFIG_MACH_Q1_BD
+#if defined(CONFIG_MACH_Q1_BD) || defined(CONFIG_MACH_C1_KDDI_REV00)
 		if (system_rev < 8) {
 			regulator = regulator_get(NULL, "vlcd_2.2v");
 			if (IS_ERR(regulator))
@@ -7295,7 +7910,7 @@ static struct platform_device *smdkc210_devices[] __initdata = {
 #if defined(CONFIG_S3C_DEV_I2C14_EMUL)
 	&s3c_device_i2c14,
 #endif
-#if defined(CONFIG_VIDEO_S5K5BAFX) || defined(CONFIG_VIDEO_S5K5BBGX)
+#if defined(CONFIG_VIDEO_S5K5BAFX) || defined(CONFIG_VIDEO_S5K5BBGX) || defined(CONFIG_VIDEO_SR200PC20)
 	&s3c_device_i2c12,
 #endif
 #ifdef CONFIG_SAMSUNG_MHL
@@ -7307,22 +7922,26 @@ static struct platform_device *smdkc210_devices[] __initdata = {
 #ifdef	CONFIG_ISDBT_FC8100
 	&s3c_device_i2c17,	/* ISDBT */
 #endif
-#if defined(CONFIG_SMB136_CHARGER_Q1) || defined(CONFIG_SMB328_CHARGER)
+#if defined(CONFIG_SMB136_CHARGER_Q1)|| (defined(CONFIG_SMB328_CHARGER) && !defined(CONFIG_MACH_C1_KDDI_REV00))
 	&s3c_device_i2c19,	/* SMB136, SMB328 */
 #endif
-#if defined(CONFIG_USBHUB_USB3803)
 #if defined(CONFIG_S3C_DEV_I2C17_EMUL)
 	&s3c_device_i2c17,	/* USB HUB */
 #endif
+#if defined(CONFIG_WIMAX_CMC)
+	&wmxeeprom_i2c_gpio_device,
 #endif
 #endif
 
 	/* consumer driver should resume after resuming i2c drivers */
 	&u1_regulator_consumer,
 
+#if defined(CONFIG_MACH_U1_NA_SPR) || defined(CONFIG_MACH_C1_KDDI_REV00)
 #ifdef CONFIG_EXYNOS4_DEV_MSHC
 	&s3c_device_mshci,
 #endif
+#endif
+
 
 #ifdef CONFIG_S3C_DEV_HSMMC
 	&s3c_device_hsmmc0,
@@ -7480,6 +8099,10 @@ static struct platform_device *smdkc210_devices[] __initdata = {
 #ifdef CONFIG_EXYNOS4_SETUP_THERMAL
 	&s5p_device_tmu,
 #endif
+#if defined(CONFIG_WIMAX_CMC)
+	&s3c_device_cmc732,
+#endif
+
 #ifdef CONFIG_BT_BCM4330
 	&bcm4330_bluetooth_device,
 #endif
@@ -7939,7 +8562,7 @@ static void __init smdkc210_machine_init(void)
 	nfc_setup_gpio();
 	i2c_register_board_info(14, i2c_devs14, ARRAY_SIZE(i2c_devs14));
 #endif
-#if defined(CONFIG_VIDEO_S5K5BAFX) || defined(CONFIG_VIDEO_S5K5BBGX)
+#if defined(CONFIG_VIDEO_S5K5BAFX) || defined(CONFIG_VIDEO_S5K5BBGX) || defined(CONFIG_VIDEO_SR200PC20)
 	i2c_register_board_info(12, i2c_devs12_emul,
 				ARRAY_SIZE(i2c_devs12_emul));
 #endif
@@ -7950,15 +8573,16 @@ static void __init smdkc210_machine_init(void)
 	i2c_register_board_info(17, i2c_devs17, ARRAY_SIZE(i2c_devs17));
 #endif
 
-#if defined(CONFIG_SMB136_CHARGER_Q1) || defined(CONFIG_SMB328_CHARGER)
+#if defined(CONFIG_SMB136_CHARGER_Q1) || (defined(CONFIG_SMB328_CHARGER) && !defined(CONFIG_MACH_C1_KDDI_REV00))
 	i2c_register_board_info(19, i2c_devs19_emul,
 						ARRAY_SIZE(i2c_devs19_emul));
 #endif
 #ifdef CONFIG_S3C_DEV_I2C17_EMUL
-#ifdef CONFIG_USBHUB_USB3803
 	i2c_register_board_info(17, i2c_devs17_emul,
 						ARRAY_SIZE(i2c_devs17_emul));
 #endif
+#if defined(CONFIG_WIMAX_CMC)
+	i2c_register_board_info(18, wmxeeprom_i2c_devices, ARRAY_SIZE(wmxeeprom_i2c_devices));
 #endif
 #endif
 

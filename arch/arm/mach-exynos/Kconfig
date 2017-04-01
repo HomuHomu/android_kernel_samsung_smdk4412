@@ -624,6 +624,11 @@ config BUSFREQ_L2_160M
 	This enable 160MHz of L2 level. Q1 has high LCD resolution,
 	so uses busfreq dvfs L2 as 160MHz.
 
+config 8M_AF_EN
+	bool
+	help
+	Use GPIO_8M_AF_EN
+
 config SEC_THERMISTOR
 	bool "Use external thermistor with ADC"
 	depends on SAMSUNG_DEV_ADC
@@ -812,6 +817,17 @@ config MACH_U1_NA_USCC
 	select S3C_DEV_I2C17_EMUL
 	select S3C_DEV_I2C4
 	select EXYNOS4_SETUP_I2C4
+
+config MACH_C1_KDDI_REV00
+	bool "Mobile KDDI DALI board"
+	select S3C_DEV_I2C17_EMUL
+	select S3C_DEV_I2C4
+	select EXYNOS4_SETUP_I2C4
+	select S3C_DEV_I2C14_EMUL
+	select 8M_AF_EN
+	help
+	  Machine Support for KDDI JPN Board.
+
 config MACH_U1
 	bool "U1 board"
 	select CPU_EXYNOS4210
